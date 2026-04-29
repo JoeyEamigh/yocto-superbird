@@ -58,5 +58,7 @@ RDEPENDS:${PN} = " \
     devmem2 \
     evtest \
     \
+    bridgething-mfi-proxy \
+    \
     fastfetch \
 "

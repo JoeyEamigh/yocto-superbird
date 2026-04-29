@@ -1,0 +1,33 @@
+# Local-source override for bridgething recipes. Lets you build the dev
+# image from an unpushed bridgething working tree instead of the github
+# checkout listed in each recipe's SRC_URI.
+#
+# Usage:
+#   1. Copy this file to kas/dev-local.yml (gitignored):
+#        cp kas/dev-local.yml.example kas/dev-local.yml
+#   2. Edit BRIDGETHING_LOCAL below to point at your bridgething checkout.
+#   3. Build with `just build dev-local` (instead of the usual
+#      `just build` / `just build bridgething`).
+#
+# Mechanic: bitbake's externalsrc.bbclass replaces do_fetch/do_unpack
+# with "use this host path as ${S}". EXTERNALSRC_BUILD redirects cargo's
+# target/ into the bitbake workdir so target/ never lands inside your
+# bridgething working tree.
+
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/bridgething.yml
+
+local_conf_header:
+  externalsrc: |
+    BRIDGETHING_LOCAL = "/path/to/your/bridgething"
+
+    INHERIT += "externalsrc"
+
+    EXTERNALSRC:pn-bridgething-daemon = "${BRIDGETHING_LOCAL}"
+    EXTERNALSRC_BUILD:pn-bridgething-daemon = "${WORKDIR}/build"
+
+    EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
+    EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
