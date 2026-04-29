@@ -9,7 +9,7 @@ HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-inherit cargo systemd
+inherit cargo systemd pkgconfig
 
 SRC_URI = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething-mfi-proxy.service"
@@ -23,6 +23,16 @@ CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS:remove = "--frozen"
 
 EXTRA_OECARGO_FLAGS = "-p bridgething-mfi-proxy --locked"
+
+# bluer pulls libdbus-sys, which links against libdbus-1 on the target.
+DEPENDS = "dbus"
+
+# headless_chrome's transitive build dep auto_generate_cdp shells out to
+# rustfmt to pretty-print the generated CDP bindings. rust-native doesn't
+# stage rustfmt into the recipe sysroot (only target rust does), so set the
+# crate's documented opt-out env var instead of pulling in a rustfmt-native
+# layer override - the formatting is cosmetic, not load-bearing.
+export DO_NOT_FORMAT = "1"
 
 SYSTEMD_SERVICE:${PN} = "bridgething-mfi-proxy.service"
 SYSTEMD_AUTO_ENABLE = "disable"
