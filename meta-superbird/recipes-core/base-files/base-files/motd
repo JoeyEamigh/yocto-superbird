@@ -1,0 +1,14 @@
+Welcome to bridgething.
+
+This is a Spotify Car Thing running mainline Linux + a community
+userland.
+
+Live status:
+systemctl status bridgething-weston bridgething-chromium-kiosk
+journalctl -u bridgething-chromium-kiosk -f
+
+Iteration loop on the dev image:
+bridgething-push-daemon ./build/bridgethingd
+bridgething-push-webapp ./dist
+/opt/bridgething/{daemon,webapps} - bind-mounted from settings,
+survives bootslot swaps + OTA.

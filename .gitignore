@@ -1,0 +1,14 @@
+# kas-managed upstream layer clones live under sources/
+/sources/
+
+# kas internal state
+/.kas/
+
+# bitbake build dir + ccache + flash artifact staging
+/build/
+/ccache/
+/artifacts/
+
+# editor / OS
+.DS_Store
+*.swp

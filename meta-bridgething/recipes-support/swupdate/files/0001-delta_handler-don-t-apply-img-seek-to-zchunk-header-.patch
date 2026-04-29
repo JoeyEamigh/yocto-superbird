@@ -1,0 +1,54 @@
+delta_handler: don't apply img->seek to zchunk header memfd
+
+When sw-description specifies `offset = ...` on a delta image entry,
+img->seek carries the destination byte offset for the chain handler's
+final write. install_delta() correctly memcpys this into the chain
+handler's img_type so the assembled image lands at the right place on
+the target device.
+
+The bug: install_delta() also calls copyimage(&mem_fd, img, NULL) to
+read the zchunk header from the .swu cpio stream into an anonymous
+memfd. copyimage's default write callback reads img->seek and lseeks
+the destination fd to that offset before writing. mem_fd ends up with
+the zchunk header bytes at offset img->seek, and a sparse zero-filled
+hole from offset 0 to img->seek-1.
+
+The subsequent `lseek(mem_fd, 0, SEEK_SET); zck_init_read(zckDst, mem_fd)`
+then reads zeros instead of the zck magic, and `zck_init_read` fails
+with "Invalid lead, perhaps this is not a zck file?"
+
+Reproduces with any A/B partition layout that uses raw byte offsets
+on a single block device - i.e. any sw-description shaped like:
+
+    {
+        type = "delta";
+        device = "/dev/mmcblk0";
+        offset = "0xNNNN";
+        properties: { url = ...; source = ...; chain = "raw"; };
+    }
+
+Fix: clear img->seek across the mem_fd copyimage call. The chain
+handler's img already has its own copy of seek from the earlier
+memcpy, so it still writes to the right offset.
+
+Upstream-Status: Pending
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/handlers/delta_handler.c
++++ b/handlers/delta_handler.c
+@@ -1003,7 +1003,15 @@ static int install_delta(struct img_type *img,
+ 		goto cleanup;
+ 	}
+
++	/*
++	 * img->seek is the chain handler's destination offset; the mem_fd
++	 * receiving the zchunk header is not a partition and must be
++	 * written from offset 0 so zck_init_read sees the magic at the start.
++	 */
++	unsigned long long save_seek = img->seek;
++	img->seek = 0;
+ 	ret = copyimage(&mem_fd, img, NULL /* default write callback */);
++	img->seek = save_seek;
+
+ 	if (ret != 0) {
+ 		ERROR("Error %d copying zchunk header, aborting.", ret);

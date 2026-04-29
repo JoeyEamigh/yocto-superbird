@@ -1,0 +1,23 @@
+[Unit]
+Description=Superbird Bluetooth (BCM20703A2 chip-enable + btattach)
+Documentation=https://github.com/JoeyEamigh/nixos-superbird
+DefaultDependencies=no
+After=systemd-tmpfiles-setup.service
+Before=bluetooth.service
+Wants=bluetooth.service
+RequiresMountsFor=/lib/firmware
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/superbird-bluetooth
+Restart=on-failure
+RestartSec=2
+# Kill the entire cgroup at stop so that the daemonized gpioset
+# processes (REG_ON HIGH + DEV_WAKE LOW) get cleaned up. Otherwise a
+# subsequent ExecStart sees "Device or resource busy" when it tries
+# to re-acquire those gpio lines. The script's own release_gpios()
+# also handles this, but cgroup cleanup is the right systemd hygiene.
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

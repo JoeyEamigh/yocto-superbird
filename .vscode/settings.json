@@ -1,0 +1,18 @@
+{
+  "bitbake.commandWrapper": "kas-container shell kas/bridgething.yml -c",
+  "bitbake.workingDirectory": "${workspaceFolder}",
+  "bitbake.pathToBitbakeFolder": "${workspaceFolder}/sources/bitbake",
+  "bitbake.pathToBuildFolder": "/work/build",
+  "bitbake.pathToEnvScript": "/work/sources/openembedded-core/oe-init-build-env",
+  "bitbake.sdkImage": "bridgething-dev-image",
+  "python.autoComplete.extraPaths": [
+    "${workspaceFolder}/sources/bitbake/lib",
+    "${workspaceFolder}/sources/openembedded-core/meta/lib",
+    "${workspaceFolder}/sources/meta-yocto/meta-poky/lib"
+  ],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/sources/bitbake/lib",
+    "${workspaceFolder}/sources/openembedded-core/meta/lib",
+    "${workspaceFolder}/sources/meta-yocto/meta-poky/lib"
+  ]
+}

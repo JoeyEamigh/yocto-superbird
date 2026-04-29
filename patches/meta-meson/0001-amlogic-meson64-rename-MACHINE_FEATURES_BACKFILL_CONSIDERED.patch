@@ -1,0 +1,25 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] amlogic-meson64: rename MACHINE_FEATURES_BACKFILL_CONSIDERED
+
+Bitbake's wrynose-era oe-core renamed the variable for opting a machine
+out of automatic feature backfills from MACHINE_FEATURES_BACKFILL_CONSIDERED
+to MACHINE_FEATURES_OPTED_OUT. The deprecated name now triggers a parse-
+time error rather than a warning, so the include must be updated for
+wrynose to parse.
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Upstream-Status: Pending
+---
+diff --git a/conf/machine/include/amlogic-meson64.inc b/conf/machine/include/amlogic-meson64.inc
+index 0000000..1111111 100644
+--- a/conf/machine/include/amlogic-meson64.inc
++++ b/conf/machine/include/amlogic-meson64.inc
+@@ -2,7 +2,7 @@
+
+ require conf/machine/include/amlogic-meson.inc
+
+-MACHINE_FEATURES_BACKFILL_CONSIDERED = "rtc"
++MACHINE_FEATURES_OPTED_OUT = "rtc"
+
+ SOC_FAMILY = "amlogic:meson-gx"
+ require conf/machine/include/soc-family.inc

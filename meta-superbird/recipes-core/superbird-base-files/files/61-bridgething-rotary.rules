@@ -1,0 +1,18 @@
+# Spotify Car Thing rotary scroll wheel — keep its REL_HWHEEL events
+# flowing for in-app scroll, but don't expose it as a wayland pointer.
+# Without these overrides, libinput tags the device as a pointer
+# (EV_REL with REL_HWHEEL is enough for libinput's classification),
+# weston binds wl_pointer to the seat, every wheel rotation triggers
+# a pointer focus event, and the cursor flashes onto the panel.
+#
+# We strip every libinput-respected mouse/keyboard tag, then set
+# LIBINPUT_DEVICE_GROUP_TYPE=-1 to make libinput skip pointer-capability
+# detection. The rotary still emits axis events for clients that bind
+# wl_pointer for OTHER reasons (e.g. touchscreen, future mouse), so
+# scroll keeps working in chromium without the cursor ever surfacing.
+
+ACTION=="add|change", SUBSYSTEM=="input", ATTRS{name}=="rotary", \
+    ENV{ID_INPUT_MOUSE}="", \
+    ENV{ID_INPUT_KEY}="", \
+    ENV{ID_INPUT_KEYBOARD}="", \
+    ENV{LIBINPUT_DEVICE_GROUP}="superbird-rotary"

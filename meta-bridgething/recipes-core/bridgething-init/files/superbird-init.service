@@ -1,0 +1,14 @@
+[Unit]
+Description=Superbird first-boot init (efuse → /etc/superbird, BT alias seed)
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target bluetooth.service superbird-bluetooth.service
+RequiresMountsFor=/var/lib
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/superbird-init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Convenience wrapper for SSH into the Superbird via the USB-gadget link.
+# Uses /dev/null known_hosts because reflashes regenerate the device's host
+# keys. The device side is a dev image with debug-tweaks (passwordless root),
+# so StrictHostKeyChecking=no is intentional here — we trust the private USB pipe.
+set -euo pipefail
+
+HOST=${SUPERBIRD_HOST:-10.42.1.2}
+
+exec ssh \
+    -o UserKnownHostsFile=/dev/null \
+    -o StrictHostKeyChecking=no \
+    -o GlobalKnownHostsFile=/dev/null \
+    -o ConnectTimeout=5 \
+    -o LogLevel=ERROR \
+    "root@$HOST" "$@"

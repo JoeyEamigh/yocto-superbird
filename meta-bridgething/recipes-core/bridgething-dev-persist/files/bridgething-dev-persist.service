@@ -1,0 +1,20 @@
+[Unit]
+Description=Bridgething dev persistent overlay (/var/lib settings → /opt/bridgething)
+After=local-fs.target var-lib.mount
+Requires=var-lib.mount
+ConditionPathIsMountPoint=!/opt/bridgething
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Create the persist tree and bind it onto /opt/bridgething. The dirs
+# under /var/lib live on the settings partition (shared between system_a
+# and system_b), so files dropped here survive bootslot swaps + OTA.
+# Done in one ExecStart with shell so mkdir + mount happen atomically
+# without an ordering cycle between systemd-tmpfiles-setup.service
+# and a .mount unit (which the previous design hit).
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/bridgething/persist/daemon /var/lib/bridgething/persist/webapps && mount --bind /var/lib/bridgething/persist /opt/bridgething'
+ExecStop=/bin/umount /opt/bridgething
+
+[Install]
+WantedBy=multi-user.target

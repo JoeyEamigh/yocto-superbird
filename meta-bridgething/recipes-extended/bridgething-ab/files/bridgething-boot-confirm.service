@@ -1,0 +1,17 @@
+[Unit]
+Description=Mark current A/B slot as boot-confirmed
+# We've reached multi-user - kernel + early services + udev are up
+# and we have at least getty available. That's "alive enough" to
+# call this slot boot-confirmed; if anything later fails it'll
+# still produce a reachable system to fix from.
+After=multi-user.target
+Requires=multi-user.target
+ConditionPathExists=/etc/fw_env.config
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bridgething-ab boot-confirm
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,91 @@
+# Bridgething OTA update - A/B slot.
+#
+# Linux can't see boot_a / boot_b as block devices (they're in the
+# Amlogic MPT, not the MBR), so we write them via raw byte offsets
+# on /dev/mmcblk0. system_a / system_b ARE visible via the MBR
+# overlay as /dev/mmcblk0p1 / /dev/mmcblk0p2, but we keep the same
+# raw-offset shape for symmetry - and dev images need it because
+# their MBR system_a / system_b spans regions the AML MPT doesn't
+# describe at all.
+#
+# Offsets are filled in at build time from the
+# SUPERBIRD_OTA_*_OFFSET bbvars (see bridgething-update.bb), so
+# dev and prod images publish .swu's matching their own geometry.
+#
+# Selector: `swupdate -i .../file.swu -e stable,slot_a` writes the
+# slot A partitions; `... slot_b` writes the slot B partitions.
+# bridgething-ab picks the inactive slot automatically.
+#
+# `installed-directly = true` streams cpio entries straight into
+# the raw handler instead of staging the whole image into TMPDIR
+# first - required because the dev image's data partition is too
+# small to spool a multi-hundred-MB system.img.
+#
+# system.img is the rootfs blob under whatever extension
+# SUPERBIRD_ROOTFS_TYPE selected (squashfs-zst on the wrynose
+# images). swupdate writes raw bytes; the kernel detects the
+# filesystem from the superblock magic at mount time.
+#
+# Slot flip via in-manifest bootenv block - swupdate flips
+# active_slot atomically after all images write successfully.
+# Required CONFIG_BOOTLOADERHANDLER=y in swupdate (see
+# meta-bridgething's swupdate bbappend); without that flag the
+# parser rejects bootenv sections with "bootloader support absent".
+# bridgething-ab still owns want_boot=kernel + slot_X_try reset
+# (boot policy, not OTA atomicity).
+
+software =
+{
+    version = "@@VERSION@@";
+    description = "Bridgething OTA";
+
+    # Matched against /etc/hwrevision on the device. The format
+    # there is `<board> <rev>`; sw-description's
+    # `hardware-compatibility` list matches the second column.
+    hardware-compatibility: [ "1.0" ];
+
+    stable: {
+        slot_a: {
+            images: (
+                {
+                    filename = "boot.img";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@BOOT_A_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@SYSTEM_A_OFFSET@@";
+                    installed-directly = true;
+                }
+            );
+            bootenv: (
+                { name = "active_slot"; value = "_a"; }
+            );
+        };
+        slot_b: {
+            images: (
+                {
+                    filename = "boot.img";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@BOOT_B_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@SYSTEM_B_OFFSET@@";
+                    installed-directly = true;
+                }
+            );
+            bootenv: (
+                { name = "active_slot"; value = "_b"; }
+            );
+        };
+    };
+};

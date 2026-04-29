@@ -1,0 +1,14 @@
+#!/bin/sh
+# /usr/bin/bridgething: prefer the dev-overlay binary at /opt/bridgething/daemon
+# if present, otherwise fall back to the in-rootfs binary at /usr/libexec.
+#
+# /opt/bridgething is a bind-mount from the settings partition on dev images
+# (bridgething-dev-persist), so the bridgething-push-daemon helper writes a
+# replaceable binary there for iteration. Prod images don't bind-mount /opt,
+# so the dev path is absent and the wrapper falls straight through to libexec.
+DEV=/opt/bridgething/daemon/bridgething
+PROD=/usr/libexec/bridgething
+if [ -x "$DEV" ]; then
+    exec "$DEV" "$@"
+fi
+exec "$PROD" "$@"

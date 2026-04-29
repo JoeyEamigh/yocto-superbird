@@ -1,0 +1,13 @@
+# Belt-and-suspenders to the udev rule in 61-bridgething-rotary.rules.
+# libinput reads quirks from /etc/libinput/local-overrides.quirks at
+# device-create time and uses them to skip pointer classification for
+# devices the kernel exposes with REL_HWHEEL but no other pointer-y
+# capabilities. The MatchName pins us to the in-tree rotary-encoder
+# input device our DTS sets up at GPIOZ_8/9.
+
+[Spotify Car Thing rotary scroll wheel]
+MatchName=rotary
+MatchUdevType=mouse
+ModelTrackball=0
+ModelTouchpad=0
+AttrEventCodeDisable=EV_REL:REL_X;EV_REL:REL_Y

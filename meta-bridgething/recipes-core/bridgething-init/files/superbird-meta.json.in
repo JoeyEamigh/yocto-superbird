@@ -1,0 +1,15 @@
+{
+  "name": "@DISTRO_NAME@",
+  "version": "@DISTRO_VERSION@",
+  "description": "@SUPERBIRD_DESCRIPTION@",
+  "fccId": "@SUPERBIRD_FCC_ID@",
+  "icId": "@SUPERBIRD_IC_ID@",
+  "modelName": "@SUPERBIRD_MODEL_NAME@",
+  "btMac": "",
+  "serialNumber": "",
+  "imageBuildId": "@IMAGE_BUILD_ID@",
+  "imageBuildDate": "@IMAGE_BUILD_DATE@",
+  "imageDistro": "@DISTRO@",
+  "imageDistroVersion": "@DISTRO_VERSION@",
+  "imageMachine": "@MACHINE@"
+}

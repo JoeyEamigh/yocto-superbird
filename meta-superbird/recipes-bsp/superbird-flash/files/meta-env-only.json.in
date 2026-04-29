@@ -1,0 +1,14 @@
+{
+  "$schema": "/dev/null",
+  "metadataVersion": 1,
+  "name": "@IMAGE_BASENAME@-env-only",
+  "version": "@DISTRO_VERSION@",
+  "description": "Env-only re-flash. Use when only env.txt changed (e.g. tweaking bootcmd or active_slot). Skips kernel/rootfs/bootloader entirely - wipes the env partition and writes the new env.",
+  "steps": [
+    { "type": "bulkcmd",  "value": "amlmmc key" },
+    { "type": "bulkcmd",  "value": "amlmmc env" },
+    { "type": "bulkcmd",  "value": "amlmmc erase env" },
+    { "type": "writeEnv", "value": { "filePath": "env.txt" } },
+    { "type": "bulkcmd",  "value": "saveenv" }
+  ]
+}

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Open an SSH tunnel from this host's port 9222 to the device's
+# chromium CDP port 9222.
+#
+# Why a tunnel instead of direct LAN access: chromium ≥ M111 silently
+# ignores --remote-debugging-address=<non-localhost>. The browser
+# always binds 127.0.0.1:9222, even when the flag asks for 0.0.0.0.
+# Google removed the bind-elsewhere path for security reasons (CVE
+# class). The Car Thing's only interface is the USB-CDC-ECM gadget so
+# there's no real LAN exposure to worry about, but chromium doesn't
+# care — it still refuses. SSH tunneling is the canonical workaround.
+#
+# Once this script is running, point a host browser at:
+#   chrome://inspect              -> add discovery target localhost:9222
+#   curl http://localhost:9222/json/version
+#
+# Press Ctrl-C to close the tunnel.
+
+set -euo pipefail
+
+PORT="${1:-9222}"
+HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+
+# -N: no remote command (just forward)
+# -T: no pseudo-tty
+# -o ServerAliveInterval=10: keep idle USB-CDC link alive
+exec ssh \
+    -L "${PORT}:127.0.0.1:9222" \
+    -N -T \
+    -o ServerAliveInterval=10 \
+    -o UserKnownHostsFile=/dev/null \
+    -o StrictHostKeyChecking=no \
+    -o LogLevel=ERROR \
+    "root@${HOST}"

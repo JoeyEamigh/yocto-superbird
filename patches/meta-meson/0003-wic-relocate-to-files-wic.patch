@@ -1,0 +1,69 @@
+From 522f4e5447b7ae5b5e11bc4db0367eea298f7760 Mon Sep 17 00:00:00 2001
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Date: Wed, 29 Apr 2026 13:24:47 -0400
+Subject: [PATCH] kas: relocate wic/ to files/wic/
+
+---
+ files/wic/sdimage-bootpart-meson.wks | 6 ++++++
+ files/wic/sdimage-meson.wks          | 7 +++++++
+ wic/sdimage-bootpart-meson.wks       | 6 ------
+ wic/sdimage-meson.wks                | 7 -------
+ 4 files changed, 13 insertions(+), 13 deletions(-)
+ create mode 100644 files/wic/sdimage-bootpart-meson.wks
+ create mode 100644 files/wic/sdimage-meson.wks
+ delete mode 100644 wic/sdimage-bootpart-meson.wks
+ delete mode 100644 wic/sdimage-meson.wks
+
+diff --git a/files/wic/sdimage-bootpart-meson.wks b/files/wic/sdimage-bootpart-meson.wks
+new file mode 100644
+index 0000000..b8a7145
+--- /dev/null
++++ b/files/wic/sdimage-bootpart-meson.wks
+@@ -0,0 +1,6 @@
++# short-description: Create SD card image with a boot partition
++# long-description: Creates a partitioned SD card image. Boot files
++# are located in the first vfat partition.
++
++part /boot --source bootimg-partition --ondisk mmcblk --fstype=vfat --label BOOTFS --active --align 4096 --size 64
++part / --source rootfs --ondisk mmcblk --fstype=ext4 --label ROOTFS --align 4
+diff --git a/files/wic/sdimage-meson.wks b/files/wic/sdimage-meson.wks
+new file mode 100644
+index 0000000..cba768a
+--- /dev/null
++++ b/files/wic/sdimage-meson.wks
+@@ -0,0 +1,7 @@
++# short-description: Create SD card image with a boot partition
++# long-description: Creates a partitioned SD card image. Boot files
++# are located in the first vfat partition.
++
++part /boot --source bootimg-partition --fstype=vfat --label boot --active --align 4096 --size 64 --sourceparams="loader=u-boot" --use-uuid
++part / --source rootfs --fstype=ext4 --use-uuid --label root --align 4096
++bootloader --ptable msdos --append="console=ttyAML0,115200"
+diff --git a/wic/sdimage-bootpart-meson.wks b/wic/sdimage-bootpart-meson.wks
+deleted file mode 100644
+index b8a7145..0000000
+--- a/wic/sdimage-bootpart-meson.wks
++++ /dev/null
+@@ -1,6 +0,0 @@
+-# short-description: Create SD card image with a boot partition
+-# long-description: Creates a partitioned SD card image. Boot files
+-# are located in the first vfat partition.
+-
+-part /boot --source bootimg-partition --ondisk mmcblk --fstype=vfat --label BOOTFS --active --align 4096 --size 64
+-part / --source rootfs --ondisk mmcblk --fstype=ext4 --label ROOTFS --align 4
+diff --git a/wic/sdimage-meson.wks b/wic/sdimage-meson.wks
+deleted file mode 100644
+index cba768a..0000000
+--- a/wic/sdimage-meson.wks
++++ /dev/null
+@@ -1,7 +0,0 @@
+-# short-description: Create SD card image with a boot partition
+-# long-description: Creates a partitioned SD card image. Boot files
+-# are located in the first vfat partition.
+-
+-part /boot --source bootimg-partition --fstype=vfat --label boot --active --align 4096 --size 64 --sourceparams="loader=u-boot" --use-uuid
+-part / --source rootfs --fstype=ext4 --use-uuid --label root --align 4096
+-bootloader --ptable msdos --append="console=ttyAML0,115200"
+-- 
+2.54.0
+

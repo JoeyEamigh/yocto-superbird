@@ -1,0 +1,119 @@
+header:
+  version: 18
+
+distro: poky
+
+repos:
+  bitbake:
+    url: https://git.openembedded.org/bitbake
+    branch: master
+    path: sources/bitbake
+    layers:
+      .: disabled
+
+  openembedded-core:
+    url: https://git.openembedded.org/openembedded-core
+    branch: wrynose
+    path: sources/openembedded-core
+    layers:
+      meta:
+
+  meta-yocto:
+    url: https://git.yoctoproject.org/meta-yocto
+    branch: wrynose
+    path: sources/meta-yocto
+    layers:
+      meta-poky:
+
+  meta-openembedded:
+    url: https://git.openembedded.org/meta-openembedded
+    branch: wrynose
+    path: sources/meta-openembedded
+    layers:
+      meta-oe:
+      meta-networking:
+      meta-multimedia:
+      meta-python:
+      meta-filesystems:
+
+  meta-meson:
+    url: https://github.com/superna9999/meta-meson
+    branch: master
+    path: sources/meta-meson
+    patches:
+      machine-features-rename:
+        repo: yocto-superbird
+        path: patches/meta-meson/0001-amlogic-meson64-rename-MACHINE_FEATURES_BACKFILL_CONSIDERED.patch
+      mesa-bbappend-fix:
+        repo: yocto-superbird
+        path: patches/meta-meson/0002-mesa-bbappend-leading-space-and-libclc.patch
+      wic-files-relocate:
+        repo: yocto-superbird
+        path: patches/meta-meson/0003-wic-relocate-to-files-wic.patch
+
+  meta-swupdate:
+    url: https://github.com/sbabic/meta-swupdate
+    branch: wrynose
+    path: sources/meta-swupdate
+
+  meta-webkit:
+    url: https://github.com/Igalia/meta-webkit
+    branch: master
+    path: sources/meta-webkit
+    # master claims `scarthgap whinlatter` in LAYERSERIES_COMPAT.
+    # We add wrynose locally via meta-bridgething/conf/layer.conf
+    # until Igalia bumps it upstream.
+
+  meta-browser:
+    url: https://github.com/OSSystems/meta-browser
+    branch: master
+    path: sources/meta-browser
+    layers:
+      meta-chromium:
+        # master claims wrynose, ships chromium 147+. Only meta-chromium
+        # sub-layer used; meta-firefox is gecko-based and there's no
+        # firefox new enough for Speedometer 3 anyway. No meta-clang
+        # needed - wrynose's openembedded-core ships clang 22 natively.
+
+local_conf_header:
+  base: |
+    INHERIT += "rm_work"
+    RM_WORK_EXCLUDE += "linux-superbird"
+    INHERIT += "ccache"
+    CCACHE_TOP_DIR = "${TOPDIR}/../ccache"
+    # tools-debug adds gdb / gdbserver / nm-suid for live debugging of
+    # daemon code on the device. serial-autologin-root drops the UART
+    # console straight to a root shell instead of waiting on a getty
+    # login prompt - quality-of-life for the bring-up iteration loop.
+    # read-only-rootfs is intentionally left off the dev image: although
+    # the runtime fstab mounts system_a ro, the image-feature also
+    # reorganizes /etc into an overlayfs and bakes runtime state in at
+    # build time, which breaks scp-into-/usr/libexec hot-fixing during
+    # iteration. Add it to a future production-image variant instead.
+    EXTRA_IMAGE_FEATURES = "ssh-server-openssh allow-empty-password allow-root-login empty-root-password post-install-logging tools-debug serial-autologin-root"
+    # weston-xwayland pulls pam as a hard dependency; poky's default
+    # DISTRO_FEATURES omits it, so add explicitly.
+    DISTRO_FEATURES:append = " pam"
+    INHERIT:remove = "create-spdx"
+    # BB_NUMBER_THREADS = "12"
+    CONF_VERSION = "2"
+
+  init-systemd: |
+    INIT_MANAGER = "systemd"
+
+  cache-24hgr: |
+    SSTATE_MIRRORS ?= "\
+      file://.* http://yocto.24hgr.love/sstate/PATH;downloadfilename=PATH \n\
+      file://.* http://sstate.yoctoproject.org/all/PATH;downloadfilename=PATH \n\
+    "
+    PREMIRRORS ?= "\
+      https?$://.*/.*  http://sources.openembedded.org/ \n\
+      git://.*/.*      http://sources.openembedded.org/ \n\
+    "
+    BB_GENERATE_MIRROR_TARBALLS = "1"
+
+  no-hashequiv: |
+    # Our sstate mirror (yocto.24hgr.love) isn't paired with a hash-equivalence
+    # server, so OEEquivHash lookups would miss.
+    BB_HASHSERVE = ""
+    BB_SIGNATURE_HANDLER = "OEBasicHash"

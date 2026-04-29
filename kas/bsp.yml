@@ -1,0 +1,19 @@
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/base.yml
+
+distro: bridgething
+
+machine: superbird
+
+target:
+  - superbird-bsp-image
+
+repos:
+  yocto-superbird:
+    path: .
+    layers:
+      meta-superbird:
+      meta-bridgething:

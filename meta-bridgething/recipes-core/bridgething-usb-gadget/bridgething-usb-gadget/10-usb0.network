@@ -1,0 +1,14 @@
+[Match]
+Name=usb0
+
+[Network]
+Address=10.42.1.2/24
+Gateway=10.42.1.1
+DNS=1.1.1.1
+DNS=8.8.8.8
+LinkLocalAddressing=no
+IPv6AcceptRA=no
+
+[Link]
+# USB cable can come and go during dev iteration; don't hold boot on it.
+RequiredForOnline=no

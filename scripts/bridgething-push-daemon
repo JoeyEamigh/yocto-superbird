@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Atomically replace the dev-overlay bridgething daemon binary on the device.
+#
+# Stops bridgething.service and bridgething-weston.service first (the latter
+# cascades chromium-kiosk shutdown via PartOf), uploads via scp to a temp
+# file, atomically renames into place at /opt/bridgething/daemon/bridgething,
+# then restarts both. Stopping the consumers up front is what keeps a 17 MB
+# release transfer over USB-CDC from contending with chromium's resident set
+# and triggering an OOM cascade or USB watchdog reset (which an earlier rsync
+# flow without this stop produced reliably on 1 GB Car Thing hardware).
+#
+# /opt/bridgething is a bind-mount from the settings partition on dev images
+# (bridgething-dev-persist), so the dropped binary survives bootslot swaps
+# and OTA upgrades. The /usr/bin/bridgething wrapper installed by the
+# bridgething-daemon recipe prefers this dev binary over the in-rootfs one.
+#
+# Usage:
+#   bridgething-push-daemon <local-path>
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    cat <<EOF >&2
+usage: bridgething-push-daemon <local-path>
+
+Pushes <local-path> to /opt/bridgething/daemon/bridgething on the device.
+Stops bridgething + weston (and chromium-kiosk via cascade), atomically
+swaps the binary, then restarts both.
+EOF
+    exit 2
+fi
+
+LOCAL="$1"
+
+if [ ! -x "$LOCAL" ]; then
+    echo "bridgething-push-daemon: not an executable file: $LOCAL" >&2
+    exit 1
+fi
+
+HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+DEST_DIR="/opt/bridgething/daemon"
+DEST="${DEST_DIR}/bridgething"
+TMP="${DEST}.tmp.$$"
+
+SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
+
+ssh_dev() { ssh "${SSH_OPTS[@]}" "root@${HOST}" "$@"; }
+
+echo "[push-daemon] stopping bridgething + bridgething-weston"
+ssh_dev "systemctl stop bridgething-weston.service bridgething.service"
+
+echo "[push-daemon] uploading $(basename "$LOCAL") ($(du -h "$LOCAL" | cut -f1)) to ${HOST}:${TMP}"
+scp -C "${SSH_OPTS[@]}" -q "$LOCAL" "root@${HOST}:${TMP}"
+
+echo "[push-daemon] swapping into ${DEST}"
+ssh_dev "chmod 0755 ${TMP} && mv -f ${TMP} ${DEST}"
+
+echo "[push-daemon] restarting bridgething + bridgething-weston"
+ssh_dev "systemctl start bridgething.service bridgething-weston.service"
+
+echo "[push-daemon] done."

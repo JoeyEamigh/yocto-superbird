@@ -1,0 +1,64 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "file",
+    "source": "/etc/fastfetch/ascii-logo.txt",
+    "color": "#81a1c1",
+  },
+  "display": {
+    "freq": {
+      "ndigits": 3,
+      "spaceBeforeUnit": "never",
+    },
+    "constants": ["──────────────────────────────────────────────"],
+  },
+  "modules": [
+    {
+      "type": "custom",
+      "format": "{#32}{#1}Spotify Car Thing (Superbird){#}",
+    },
+    {
+      "type": "custom",
+      "format": "{#90}{$1}{#}",
+    },
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "shell",
+    {
+      "type": "command",
+      "key": "Display",
+      "text": "echo 'ST7701 480x800 in 4\\\", 60 Hz'",
+    },
+    {
+      "type": "command",
+      "key": "WM",
+      "text": "echo 'Weston'",
+    },
+    { "type": "cpu", "format": "{name} ({cores-physical}) @ {freq-max}" },
+    "gpu",
+    "memory",
+    "swap",
+    "disk",
+    {
+      "type": "command",
+      "key": "Discord",
+      "text": "https://tl.mt/d",
+      "keyColor": "#81a1c1",
+    },
+    {
+      "type": "command",
+      "key": "With <3 from",
+      "text": "echo 'ThingLabs'",
+      "keyColor": "#81a1c1",
+    },
+    {
+      "type": "custom",
+      "format": "{#90}{$1}{#}",
+    },
+    "colors",
+  ],
+}

@@ -1,0 +1,64 @@
+#!/bin/sh
+# bridgething-chromium-launch - exec chromium under weston as a kiosk.
+#
+# Sourced env file at /etc/default/bridgething-kiosk lets sysadmins
+# (or, more commonly, this dev) override BRIDGETHING_KIOSK_URL and
+# BRIDGETHING_KIOSK_EXTRA without rebuilding the image. Default URL is
+# the bridgething daemon's modern HTTP/WS listen on port 8891 - the
+# daemon serves the active webapp at / and proxies on-demand assets via
+# the /_gateway/ namespace.
+#
+# CDP is unconditionally on at 9222. chromium ≥ M111 silently ignores
+# --remote-debugging-address=<non-localhost> (Google removed the bind-
+# elsewhere path for security), so the listener is always 127.0.0.1.
+# The host-side `bridgething-cdp` helper opens an SSH port-forward to
+# pull 9222 to the dev host. --remote-allow-origins=* still matters
+# because chrome rejects DevTools WS upgrades from non-localhost
+# origins by default; with the tunnel, the host browser hits localhost
+# (= the tunnel endpoint) and the origin check passes.
+#
+# --use-angle=gles overrides the chromium /usr/bin/chromium wrapper's
+# default --use-angle=gles-egl. The wrapper's value is INVALID - chromium
+# 147 only accepts (default|gles|vulkan|swiftshader). With gles-egl
+# silently rejected, chromium falls back to gl=disabled and the GPU
+# process exits at startup with "(gl=none,angle=none) not found in
+# allowed implementations". With gles, ANGLE bridges to Mesa's libGLESv2
+# → libgallium → Panfrost → Mali-G31. The chromium command line is
+# last-wins for --use-angle, so this override after the wrapper's flags
+# is what actually takes effect.
+
+set -eu
+
+BRIDGETHING_KIOSK_URL="${BRIDGETHING_KIOSK_URL:-http://127.0.0.1:8891/}"
+BRIDGETHING_KIOSK_EXTRA="${BRIDGETHING_KIOSK_EXTRA:-}"
+
+if [ -r /etc/default/bridgething-kiosk ]; then
+    # shellcheck disable=SC1091
+    . /etc/default/bridgething-kiosk
+fi
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/weston}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+
+exec /usr/bin/chromium \
+    --kiosk \
+    --no-first-run \
+    --no-default-browser-check \
+    --no-sandbox \
+    --ozone-platform=wayland \
+    --use-angle=gles \
+    --remote-debugging-port=9222 \
+    --remote-allow-origins=* \
+    --disk-cache-size=1 \
+    --media-cache-size=1 \
+    --disable-application-cache \
+    --default-background-color=000000 \
+    --noerrdialogs \
+    --disable-session-crashed-bubble \
+    --disable-infobars \
+    --disable-features=Translate \
+    --check-for-update-interval=31536000 \
+    --disable-pinch \
+    --overscroll-history-navigation=0 \
+    ${BRIDGETHING_KIOSK_EXTRA} \
+    "${BRIDGETHING_KIOSK_URL}"

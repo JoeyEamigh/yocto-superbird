@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=Blank
+Comment=Fully transparent cursor theme — kiosk needs no cursor visible.
+Inherits=core

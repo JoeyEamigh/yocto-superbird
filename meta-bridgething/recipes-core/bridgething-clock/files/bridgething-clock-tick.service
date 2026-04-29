@@ -1,0 +1,7 @@
+[Unit]
+Description=Bridgething clock tick (touches /var/lib/clock-mtime)
+RequiresMountsFor=/var/lib
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bridgething-clock --save

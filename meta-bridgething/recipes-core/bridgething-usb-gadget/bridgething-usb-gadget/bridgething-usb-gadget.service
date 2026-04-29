@@ -1,0 +1,15 @@
+[Unit]
+Description=Bridgething USB gadget (CDC-ECM/RNDIS) bring-up
+DefaultDependencies=no
+After=sys-kernel-config.mount local-fs.target systemd-modules-load.service
+Before=network-pre.target
+Wants=network-pre.target
+ConditionPathExistsGlob=/sys/class/udc/*
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/bridgething-usb-gadget
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] mesa.bbappend: leading space + add libclc for panfrost
+
+Mesa 26's PACKAGECONFIG list ends in "gbm" (when DISTRO_FEATURES contains
+opengl). The previous append "lima panfrost" had no leading space, so
+the resulting string contained "gbmlima panfrost" - bitbake's
+invalid-packageconfig QA then rejected the unknown "gbmlima" token.
+
+Add the leading space, and add libclc so the panfrost gallium driver
+gets enabled (mesa.inc gates panfrost on "panfrost libclc" being present
+together for build-time mesa-clc shader compilation). libclc adds only
+build-time DEPENDS (mesa-tools-native) - no runtime cost.
+
+Do NOT add gallium-llvm: that pulls llvmpipe (CPU rasterization) into
+GALLIUMDRIVERS and makes libgallium link against shared libLLVM at
+runtime, adding ~110 MB to the image. Hardware GPUs like Mali-G31 have
+no use for llvmpipe.
+
+Upstream-Status: Pending
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+diff --git a/recipes-graphics/mesa/mesa.bbappend b/recipes-graphics/mesa/mesa.bbappend
+index 1111111..2222222 100644
+--- a/recipes-graphics/mesa/mesa.bbappend
++++ b/recipes-graphics/mesa/mesa.bbappend
+@@ -1 +1 @@
+-PACKAGECONFIG:append:meson-gx = "lima panfrost"
++PACKAGECONFIG:append:meson-gx = " lima panfrost libclc"
