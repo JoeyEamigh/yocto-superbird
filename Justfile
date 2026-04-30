@@ -168,7 +168,7 @@ push-webapp local name="":
 # SSH-tunnel chromium's CDP from the device's 127.0.0.1:9222 to the
 # host. chromium >= M111 ignores --remote-debugging-address=non-localhost
 # silently, so this tunnel is the path to chrome://inspect from the host.
-cdp port="9222":
+cdp port="9223":
   scripts/bridgething-cdp {{port}}
 
 # Stub HTTP server that serves the prod delta-OTA chunk file

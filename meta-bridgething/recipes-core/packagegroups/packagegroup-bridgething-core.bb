@@ -20,6 +20,7 @@ RDEPENDS:${PN} = " \
     bridgething-clock \
     bridgething-usb-gadget \
     bridgething-als \
+    bridgething-rotary \
     bridgething-fbpaint \
     bridgething-stock-webapp \
     superbird-base-files \

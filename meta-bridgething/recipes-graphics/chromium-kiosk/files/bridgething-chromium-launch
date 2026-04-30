@@ -47,18 +47,28 @@ exec /usr/bin/chromium \
     --no-sandbox \
     --ozone-platform=wayland \
     --use-angle=gles \
-    --remote-debugging-port=9222 \
-    --remote-allow-origins=* \
     --disk-cache-size=1 \
     --media-cache-size=1 \
     --disable-application-cache \
-    --default-background-color=000000 \
     --noerrdialogs \
     --disable-session-crashed-bubble \
     --disable-infobars \
-    --disable-features=Translate \
     --check-for-update-interval=31536000 \
     --disable-pinch \
     --overscroll-history-navigation=0 \
+    --force-color-profile=srgb \
+    --ozone-platform-hint=wayland \
+    --enable-low-end-device-mode \
+    --js-flags=--max-old-space-size=96 --max-semi-space-size=4 \
+    --renderer-process-limit=1 \
+    --process-per-site \
+    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter \
+    --disable-component-update \
+    --disable-background-networking \
+    --disable-sync \
+    --disable-default-apps \
+    --disable-extensions \
+    --disable-features=AcceleratedVideoDecode \
+    --user-data-dir=/run/chromium-data \
     ${BRIDGETHING_KIOSK_EXTRA} \
     "${BRIDGETHING_KIOSK_URL}"
