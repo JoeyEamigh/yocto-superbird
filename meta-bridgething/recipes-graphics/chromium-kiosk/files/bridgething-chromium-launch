@@ -70,5 +70,6 @@ exec /usr/bin/chromium \
     --disable-extensions \
     --disable-features=AcceleratedVideoDecode \
     --user-data-dir=/run/chromium-data \
+    --remote-debugging-port=9222 \
     ${BRIDGETHING_KIOSK_EXTRA} \
     "${BRIDGETHING_KIOSK_URL}"
