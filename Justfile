@@ -32,8 +32,31 @@ checkout target=default:
 # downloads mirror configured in kas/base.yml). Subsequent builds hit
 # the local sstate-cache + ccache. Use `bsp` for a kernel-only image
 # without the bridgething daemon.
+#
+# The `dev-local` target swaps the daemon recipes' SRC_URI for a host-
+# side bridgething checkout via externalsrc. kas-container only mounts
+# the kas working dir, so we additionally bind-mount the host path read
+# out of kas/dev-local.yml at the same path inside the container - that
+# keeps BRIDGETHING_LOCAL identical on host and inside the container so
+# externalsrc resolves the same way in both places. The path lives only
+# in kas/dev-local.yml (gitignored); nothing host-specific is committed.
 build target=default:
-  kas-container build kas/{{target}}.yml
+  #!/usr/bin/env bash
+  set -euo pipefail
+  args=()
+  if [ "{{target}}" = "dev-local" ]; then
+    if [ ! -f kas/dev-local.yml ]; then
+      echo "kas/dev-local.yml missing - copy kas/dev-local.example.yml and edit BRIDGETHING_LOCAL" >&2
+      exit 1
+    fi
+    local_dir=$(sed -n 's/.*BRIDGETHING_LOCAL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' kas/dev-local.yml | head -n1)
+    if [ -z "$local_dir" ] || [ ! -d "$local_dir" ]; then
+      echo "BRIDGETHING_LOCAL in kas/dev-local.yml is missing or not a directory: '$local_dir'" >&2
+      exit 1
+    fi
+    args+=(--runtime-args "-v $local_dir:$local_dir")
+  fi
+  kas-container "${args[@]}" build kas/{{target}}.yml
 
 # Drop into a bitbake shell inside the container. Useful for `bitbake
 # -c devshell <recipe>`, manifest inspection, dependency analysis.

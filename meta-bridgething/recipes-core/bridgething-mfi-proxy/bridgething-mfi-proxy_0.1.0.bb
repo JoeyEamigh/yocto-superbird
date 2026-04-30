@@ -9,7 +9,7 @@ HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-inherit cargo systemd pkgconfig
+inherit cargo systemd
 
 SRC_URI = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething-mfi-proxy.service"
@@ -22,17 +22,13 @@ do_compile[network] = "1"
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS:remove = "--frozen"
 
-EXTRA_OECARGO_FLAGS = "-p bridgething-mfi-proxy --locked"
-
-# bluer pulls libdbus-sys, which links against libdbus-1 on the target.
-DEPENDS = "dbus"
-
-# headless_chrome's transitive build dep auto_generate_cdp shells out to
-# rustfmt to pretty-print the generated CDP bindings. rust-native doesn't
-# stage rustfmt into the recipe sysroot (only target rust does), so set the
-# crate's documented opt-out env var instead of pulling in a rustfmt-native
-# layer override - the formatting is cosmetic, not load-bearing.
-export DO_NOT_FORMAT = "1"
+# Restrict cargo to mfi-proxy's transitive dep graph. Without -p, cargo
+# would compile every workspace member - including the daemon, which
+# pulls bluer + libdbus-sys + headless_chrome and is the bulk of the
+# build. mfi-proxy itself only needs i2cdev / nix / tracing, so scoping
+# here drops the recipe's compile time by an order of magnitude and
+# removes the libdbus-1 link requirement.
+CARGO_BUILD_FLAGS:append = " -p bridgething-mfi-proxy --locked"
 
 SYSTEMD_SERVICE:${PN} = "bridgething-mfi-proxy.service"
 SYSTEMD_AUTO_ENABLE = "disable"

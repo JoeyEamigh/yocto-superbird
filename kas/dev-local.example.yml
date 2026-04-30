@@ -4,15 +4,20 @@
 #
 # Usage:
 #   1. Copy this file to kas/dev-local.yml (gitignored):
-#        cp kas/dev-local.yml.example kas/dev-local.yml
+#        cp kas/dev-local.example.yml kas/dev-local.yml
 #   2. Edit BRIDGETHING_LOCAL below to point at your bridgething checkout.
+#      That path is the only host-specific value; the Justfile reads it
+#      back out of this file and bind-mounts it into the kas container.
 #   3. Build with `just build dev-local` (instead of the usual
 #      `just build` / `just build bridgething`).
 #
 # Mechanic: bitbake's externalsrc.bbclass replaces do_fetch/do_unpack
 # with "use this host path as ${S}". EXTERNALSRC_BUILD redirects cargo's
 # target/ into the bitbake workdir so target/ never lands inside your
-# bridgething working tree.
+# bridgething working tree. EXTERNALSRC_SYMLINKS = "" stops externalsrc
+# from dropping oe-workdir / oe-logs symlinks into the source tree -
+# they'd point at container-internal paths and would just clutter
+# `git status` on the bridgething repo.
 
 header:
   version: 18
@@ -31,3 +36,15 @@ local_conf_header:
 
     EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
+
+    EXTERNALSRC_SYMLINKS = ""
+
+    CARGO_BUILD_FLAGS:append:pn-bridgething-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
+    CARGO_BUILD_FLAGS:append:pn-bridgething-mfi-proxy = " --config profile.release.lto=false --config profile.release.codegen-units=32"
+
+repos:
+  yocto-superbird:
+    path: .
+    layers:
+      meta-superbird:
+      meta-bridgething:

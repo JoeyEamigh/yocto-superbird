@@ -31,11 +31,14 @@ do_compile[network] = "1"
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS:remove = "--frozen"
 
-# Build only the daemon binary from the workspace. The chromium feature
-# (default) is for hosting bridgething inside a host's chrome via CDP; on
-# the device we want the systemd-aware superbird feature instead. --locked
-# keeps Cargo.lock authoritative.
-EXTRA_OECARGO_FLAGS = "-p bridgething --no-default-features --features superbird --locked"
+# Build only the daemon binary from the workspace. Without -p, cargo
+# would compile every workspace member (bridgething-mfi-proxy,
+# tools/codegen, packages/adapter-node, ...). The default feature set
+# enables `chrome` (host-side CDP hosting); on the device we want the
+# `superbird` feature instead, which is systemd-aware and pulls ALS +
+# mic. --locked keeps Cargo.lock authoritative now that --frozen is
+# gone (--frozen also implied --offline, hence the :remove above).
+CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
 # bluer pulls libdbus-sys, which links against libdbus-1 on the target.
 DEPENDS = "dbus"
