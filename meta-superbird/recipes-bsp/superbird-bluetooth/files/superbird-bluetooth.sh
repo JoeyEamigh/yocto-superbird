@@ -25,6 +25,18 @@ TTY="/dev/ttyAML1"
 LOW_HOLD_MS=100
 HIGH_SETTLE_MS=300
 
+# /sys/bus/nvmem cell containing the OEM-stamped public BDADDR. The
+# DTS reg <0x6 0x6> puts this at offset 6 in efuse0; cells/bt-mac@6,0
+# is the canonical kernel-named symlink. 6 raw bytes, MSB-first.
+BT_MAC_CELL_GLOB="/sys/bus/nvmem/devices/efuse0/cells/bt-mac@*"
+
+# How long we'll wait for the kernel to expose hci0 after btattach
+# triggers the BCM patchram load AND for it to leave INIT state.
+# bcm_setup() runs the full patchram + baudrate dance synchronously
+# in the kernel and that can take >5s on a cold boot, so we give it
+# 30s of margin before giving up on programming the BDADDR.
+HCI_WAIT_SECONDS=30
+
 log() { printf '[superbird-bluetooth] %s\n' "$*"; }
 
 # Kill any daemonized gpioset/btattach processes from a previous run
@@ -133,13 +145,91 @@ attach_btattach() {
     # response. With flow control on, TWO_WIRE_EN clears and the
     # controller drives RTS LOW based on RX FIFO state.
     log "btattach -P bcm -S 115200 -B ${TTY}"
-    exec btattach -P bcm -S 115200 -B "${TTY}"
+    btattach -P bcm -S 115200 -B "${TTY}" &
+    BTATTACH_PID=$!
+}
+
+# Wait for the kernel to expose /sys/class/bluetooth/hci0 AND for the
+# adapter to leave INIT and reach the UP state. hcitool/HCI commands
+# error out with "Network is down" while the adapter is still INIT,
+# so we explicitly bring it UP and confirm the kernel mark before
+# issuing the BDADDR write.
+wait_for_hci0() {
+    local i
+    for i in $(seq 1 $((HCI_WAIT_SECONDS * 10))); do
+        if [ -e /sys/class/bluetooth/hci0 ]; then
+            break
+        fi
+        sleep 0.1
+    done
+    if [ ! -e /sys/class/bluetooth/hci0 ]; then
+        log "ERROR: hci0 did not appear within ${HCI_WAIT_SECONDS}s"
+        return 1
+    fi
+    hciconfig hci0 up >/dev/null 2>&1 || true
+    for i in $(seq 1 $((HCI_WAIT_SECONDS * 10))); do
+        if hciconfig hci0 | grep -qw UP; then
+            return 0
+        fi
+        hciconfig hci0 up >/dev/null 2>&1 || true
+        sleep 0.1
+    done
+    log "ERROR: hci0 did not reach UP within ${HCI_WAIT_SECONDS}s"
+    return 1
+}
+
+# Write the OEM-stamped public BDADDR into the BCM controller and
+# reset so the new address takes effect. iAP2 IdentificationInformation
+# (param 17, BluetoothTransportComponent) carries this MAC and the
+# iPhone rejects identification if it doesn't match the address it
+# bonded against. Without this step the BCM chip boots with a default
+# / random address chosen by the patchram, which never matches the
+# /etc/superbird btMac field that bridgething-init seeds from the same
+# nvmem cell.
+program_efuse_bdaddr() {
+    local cell mac_be hex_le
+    cell=$(ls ${BT_MAC_CELL_GLOB} 2>/dev/null | head -n 1)
+    if [ -z "${cell}" ] || [ ! -r "${cell}" ]; then
+        log "WARN: efuse bt-mac cell not present; controller keeps patchram default BDADDR"
+        return 0
+    fi
+    # 6 raw bytes MSB-first in the cell (matches what hexdump prints
+    # in superbird-init.sh). Print as colon-separated for the log line
+    # and as space-separated little-endian for hcitool.
+    mac_be=$(hexdump -e '5/1 "%02X:" 1/1 "%02X"' "${cell}")
+    hex_le=$(hexdump -e '6/1 "%02X "' "${cell}" \
+        | awk '{ for (i=NF; i>0; i--) printf "%s%s", $i, (i==1 ? "" : " ") }')
+    log "writing efused BDADDR ${mac_be} via HCI_BCM_Write_BDADDR (0xFC01)"
+    if ! hcitool -i hci0 cmd 0x3F 0x001 ${hex_le} >/dev/null; then
+        log "WARN: HCI_BCM_Write_BDADDR command failed; controller keeps current BDADDR"
+        return 0
+    fi
+    # The BCM chip latches the new BDADDR on the next HCI_Reset.
+    # `hciconfig hci0 reset` issues HCI_Reset and re-reads local
+    # info, which is what makes bluetoothd see the new address when
+    # the bluetooth.service that follows enumerates the controller.
+    if ! hciconfig hci0 reset >/dev/null; then
+        log "WARN: hciconfig reset failed after BDADDR write"
+    fi
 }
 
 main() {
     release_gpios
+    # If hci0 already exists from a previous bringup (dev iteration,
+    # service restart), force it DOWN before we power-cycle the chip.
+    # Otherwise the kernel keeps its old BDADDR cache and hciconfig
+    # reports UP RUNNING with stale info while the chip is still
+    # mid-patchram-load.
+    if [ -e /sys/class/bluetooth/hci0 ]; then
+        log "hci0 already exists; bringing DOWN to clear stale state"
+        hciconfig hci0 down >/dev/null 2>&1 || true
+    fi
     pulse_chip_enable
     attach_btattach
+    if wait_for_hci0; then
+        program_efuse_bdaddr
+    fi
+    wait "${BTATTACH_PID}"
 }
 
 main "$@"
