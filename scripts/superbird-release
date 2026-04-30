@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Push the most recently built bridgething images to the rolling
+# `latest` GitHub release, so fellow bridgething devs can grab a
+# recent dev/prod image without standing up the full Yocto build.
+#
+# Run after a successful `just build` - uploads the stable-symlink
+# variants of the dev + prod flashthing zips (whichever artifact the
+# symlink currently resolves to). First run creates the release;
+# subsequent runs replace the artifacts in place via `--clobber`.
+#
+# Requires gh CLI authed against the yocto-superbird repo.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+deploy="$REPO_ROOT/build/tmp/deploy/images/superbird"
+dev="$deploy/bridgething-dev-image-superbird-flashthing.zip"
+prod="$deploy/bridgething-prod-image-superbird-flashthing.zip"
+
+for f in "$dev" "$prod"; do
+  if [[ ! -e "$f" ]]; then
+    echo "missing $(basename "$f") - run 'just build' first" >&2
+    exit 1
+  fi
+done
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh CLI not on PATH (https://cli.github.com)" >&2
+  exit 2
+fi
+
+date_str="$(date -u +'%Y-%m-%d %H:%M UTC')"
+commit="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+notes="Rolling latest bridgething dev + prod images.
+
+Built: $date_str (commit \`$commit\`)
+
+Flash from a clone of this repo:
+
+    cargo install flashthing-cli
+    sudo flashthing-cli --setup     # udev rule, Linux only
+    just install-dev                # or just install-prod
+    just boot-kernel                # exit burn mode into the new image
+
+Device must be in burn mode (hold wheel-click while plugging in USB,
+or \`just reboot-to-burn\` from a running device)."
+
+cd "$REPO_ROOT"
+
+if gh release view latest >/dev/null 2>&1; then
+  echo "updating existing 'latest' release..."
+  gh release upload latest "$dev" "$prod" --clobber
+  gh release edit latest --notes "$notes"
+else
+  echo "creating 'latest' release..."
+  gh release create latest "$dev" "$prod" \
+    --title "Latest dev + prod images" \
+    --notes "$notes"
+fi
+
+echo
+echo "release 'latest' updated."
+echo "consumers: 'just install-dev' / 'just install-prod' from a clone of this repo."

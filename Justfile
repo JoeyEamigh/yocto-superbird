@@ -115,6 +115,30 @@ flash image="bridgething-dev-image":
 flash-env image="bridgething-dev-image":
   {{flashthing}} build/tmp/deploy/images/superbird/{{image}}-superbird-flashthing-env-only.zip
 
+# --- Release / install (no-build dev path) ---
+# Distribution path for fellow bridgething devs who only want a recent
+# image to iterate against (push-daemon / push-webapp / ssh) without
+# standing up the full Yocto toolchain. Producer side runs `release`
+# after a clean build to push artifacts; consumer side runs
+# `install-dev` / `install-prod` from a clone of this repo.
+
+# Push the most recently built dev + prod flashthing zips to the
+# rolling `latest` GitHub release. Replaces existing artifacts in
+# place; no tags, no semver. Requires gh CLI authed against this repo.
+release:
+  scripts/superbird-release
+
+# Pull the latest dev image from the rolling release and flash it.
+# Skips the Yocto build entirely. Requires gh CLI + flashthing-cli;
+# device must be in burn mode (1b8e:c003). Run `just boot-kernel`
+# after to exit burn mode into the new image.
+install-dev:
+  scripts/superbird-install dev
+
+# Same as install-dev but pulls the prod image variant.
+install-prod:
+  scripts/superbird-install prod
+
 # --- Device helpers ---
 # Scripts live in scripts/ as the canonical source of truth. Override
 # SUPERBIRD_HOST / SUPERBIRD_UART_DEV / SUPERBIRD_TOOL_DIR via env when

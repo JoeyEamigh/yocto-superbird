@@ -15,6 +15,37 @@ Bluetooth, tlsc6x touchscreen, rotary encoder fwnode-irq fixup, a few drm
 display-handoff hooks). u-boot is left stock — Yocto only owns kernel +
 rootfs.
 
+## Install (no build)
+
+For folks working on bridgething itself (the daemon, the webapp, anything
+on top of the image) and not the image itself: a rolling `latest` GitHub
+release carries the most recent dev + prod flashthing zips. Pull from
+that and skip the multi-hour Yocto build.
+
+One-time setup:
+
+```bash
+gh auth login                  # gh CLI, repo scope (release is private)
+cargo install flashthing-cli
+sudo flashthing-cli --setup    # udev rule for libusb burn-mode access (Linux)
+```
+
+Then, from a clone of this repo, with the Car Thing in burn mode (hold
+wheel-click while plugging in USB):
+
+```bash
+just install-dev               # or just install-prod
+just boot-kernel               # exit burn mode into the new image
+```
+
+About 18 s after `boot-kernel`, the device is up at `10.42.1.2` over
+USB-CDC-ECM (host-side NetworkManager profile required, see
+[Iteration](#iteration)) and ready for `just push-daemon` /
+`just push-webapp` / `just ssh`.
+
+The release is updated manually after clean local builds (`just release`)
+— there's no CI yet and no semver, just whatever was last pushed.
+
 ## Build prerequisites
 
 | Tool | Why |

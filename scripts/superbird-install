@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Pull the most recent bridgething image from the rolling `latest`
+# GitHub release and flash it to a Car Thing in burn mode. For fellow
+# bridgething devs who don't want to build the image themselves -
+# skips the multi-hour Yocto build and just grabs whatever was last
+# uploaded via `just release`.
+#
+# Requires:
+#   - flashthing-cli (cargo install flashthing-cli)
+#   - gh CLI authed against the yocto-superbird repo
+#   - Car Thing in burn mode (USB enumerates as 1b8e:c003)
+#
+# After this finishes, run `just boot-kernel` to exit burn mode into
+# the freshly flashed image. Matches the two-step UX of `just flash`
+# so the iteration loop is the same whether you built locally or
+# pulled from releases.
+
+set -euo pipefail
+
+variant="${1:-}"
+case "$variant" in
+  dev|prod) ;;
+  *) echo "usage: $(basename "$0") dev|prod" >&2; exit 1 ;;
+esac
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+flashthing="${FLASHTHING_CLI:-flashthing-cli}"
+if ! command -v "$flashthing" >/dev/null 2>&1; then
+  cat >&2 <<EOF
+flashthing-cli not found on PATH.
+
+Install with:
+    cargo install flashthing-cli
+    sudo flashthing-cli --setup    # udev rule for libusb burn-mode access (Linux)
+
+Or set FLASHTHING_CLI=/path/to/binary.
+EOF
+  exit 2
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh CLI not on PATH (https://cli.github.com)" >&2
+  exit 2
+fi
+
+zip_name="bridgething-${variant}-image-superbird-flashthing.zip"
+dest="${TMPDIR:-/tmp}/$zip_name"
+
+cd "$REPO_ROOT"
+
+echo "fetching $zip_name from rolling 'latest' release..."
+gh release download latest --pattern "$zip_name" --output "$dest" --clobber
+
+echo "flashing $variant image (~30-60s)..."
+"$flashthing" "$dest"
+
+cat <<EOF
+
+flash complete. exit burn mode into the new kernel with:
+    just boot-kernel
+EOF
