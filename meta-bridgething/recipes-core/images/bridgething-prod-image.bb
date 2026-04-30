@@ -17,11 +17,3 @@ require bridgething-image-base.inc
 IMAGE_INSTALL:append = " \
     bridgething-weston-init-kiosk \
 "
-
-# Emit zchunk artifacts alongside the squashfs rootfs for the
-# delta-OTA payload. meta-swupdate's image_types_zchunk class adds
-# CONVERSIONTYPES `zck` and `zckheader`; Yocto walks the dotted chain
-# (squashfs-zst -> squashfs-zst.zck -> squashfs-zst.zck.zckheader) and
-# keeps each intermediate.
-IMAGE_FSTYPES += "squashfs-zst.zck squashfs-zst.zck.zckheader"
-IMAGE_CLASSES += "image_types_zchunk"

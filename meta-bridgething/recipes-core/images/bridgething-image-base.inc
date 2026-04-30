@@ -58,6 +58,12 @@ SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
 SUPERBIRD_ROOTFS_TYPE = "squashfs-zst"
 EXTRA_IMAGECMD:squashfs-zst = "-b 1M -no-xattrs -all-root -Xcompression-level 22"
 
-# Drop the distro-default ext4 + tar.bz2. Variants append zchunk
-# derivatives for OTA delta payload generation.
-IMAGE_FSTYPES = "squashfs-zst"
+# Drop the distro-default ext4 + tar.bz2. Both images get zchunk
+# derivatives so bridgething-update-{dev,prod}.bb can each build a
+# delta .swu against their respective image. meta-swupdate's
+# image_types_zchunk class adds CONVERSIONTYPES `zck` and
+# `zckheader`; Yocto walks the dotted chain (squashfs-zst ->
+# squashfs-zst.zck -> squashfs-zst.zck.zckheader) and keeps each
+# intermediate.
+IMAGE_FSTYPES = "squashfs-zst squashfs-zst.zck squashfs-zst.zck.zckheader"
+IMAGE_CLASSES += "image_types_zchunk"

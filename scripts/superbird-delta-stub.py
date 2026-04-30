@@ -45,12 +45,19 @@ class RangeHandler(BaseHTTPRequestHandler):
 
     def _resolve(self) -> str | None:
         rel = self.path.lstrip("/").split("?", 1)[0]
-        # Reject path traversal and absolute paths.
+        # Reject path traversal and absolute paths at the URL level.
         if not rel or rel.startswith("..") or "/.." in rel or rel.startswith("/"):
             self.send_error(400, "bad path")
             return None
-        full = os.path.realpath(os.path.join(self.serve_root, rel))
-        if not full.startswith(os.path.realpath(self.serve_root) + os.sep):
+        # Textual normpath only - don't realpath. The bridgething-ota
+        # flow stages a tmp serve dir with system.img.zck symlinked at
+        # the build's deploy artifact (which lives outside the serve
+        # dir); realpath-ing through that link would falsely flag it
+        # as escape. The URL-level check above is what blocks actual
+        # `..` traversal.
+        root = os.path.realpath(self.serve_root)
+        full = os.path.normpath(os.path.join(root, rel))
+        if full != root and not full.startswith(root + os.sep):
             self.send_error(403, "outside serve root")
             return None
         if not os.path.isfile(full):

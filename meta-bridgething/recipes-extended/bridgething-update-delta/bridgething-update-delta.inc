@@ -1,4 +1,17 @@
-SUMMARY = "Bridgething OTA artifact (.swu) for the prod image - delta + raw"
+# Shared machinery for the zchunk-delta OTA .swu recipes.
+# Wrappers (bridgething-update-prod.bb, bridgething-update-dev.bb)
+# pin BRIDGETHING_OTA_SOURCE_IMAGE to the image their .swu deltas
+# against. The source image must emit `squashfs-zst.zck` +
+# `squashfs-zst.zck.zckheader` (IMAGE_FSTYPES += "..." +
+# IMAGE_CLASSES += "image_types_zchunk").
+#
+# Output: <PN>-${MACHINE}.swu, packing boot.img verbatim (raw
+# handler) and a zchunk header for system.img (delta handler chained
+# to raw). The delta handler reads chunks from the currently-mounted
+# slot, fetches missing chunks via HTTP from SUPERBIRD_OTA_DELTA_URL_BASE,
+# reassembles, then writes to the inactive slot's byte offset on
+# /dev/mmcblk0.
+
 DESCRIPTION = "Generates a swupdate .swu archive that ships boot.img \
 verbatim (raw handler) and system.img as a zchunk delta header \
 (delta handler chained to raw). The delta handler reads chunks from \
@@ -16,9 +29,23 @@ to a host-side stub like http://10.42.1.1:8000."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-# OTA offsets matching bridgething-prod-image's geometry.
-# Production system_a / system_b are at the AML MPT positions
-# (same on every prod variant, byte-identical to stock).
+# Wrapping recipes pin this. Hard error if a future caller forgets.
+BRIDGETHING_OTA_SOURCE_IMAGE ??= ""
+
+python __anonymous() {
+    if not d.getVar('BRIDGETHING_OTA_SOURCE_IMAGE'):
+        bb.fatal("BRIDGETHING_OTA_SOURCE_IMAGE must be set by the wrapping recipe (e.g. bridgething-prod-image)")
+}
+
+# Yocto's default IMAGE_LINK_NAME is `${IMAGE_BASENAME}-${MACHINE}`.
+# We mirror that here to find the source image's deploy symlinks
+# without re-deriving from its bbvars (which we can't read across
+# recipe scope anyway).
+BRIDGETHING_OTA_SOURCE_LINKNAME = "${BRIDGETHING_OTA_SOURCE_IMAGE}-${MACHINE}"
+
+# OTA offsets matching the stock AML MPT geometry. Both dev + prod
+# images share this layout - squashfs makes the lean shape enough
+# for the kitchen-sink dev install too.
 SUPERBIRD_OTA_BOOT_A_OFFSET   = "0xd600000"
 SUPERBIRD_OTA_BOOT_B_OFFSET   = "0xee00000"
 SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
@@ -40,20 +67,18 @@ SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://10.42.1.1:8000"
 
 # Per-recipe staging subdir in DEPLOY_DIR_IMAGE. Lets us use the
 # bare cpio-entry names (`boot.img`, `system.img.zck.zckheader`)
-# without racing against the dev image's flashthing_zip - both
-# images publish image-namespaced symlinks in DEPLOY_DIR_IMAGE,
+# without racing against the source image's flashthing_zip - both
+# the image and this recipe publish symlinks in DEPLOY_DIR_IMAGE,
 # and our do_stage_swu_inputs task copies them into a subdir keyed
-# to this recipe's name. swupdate-common's add_image_to_swu uses
+# to this recipe's PN. swupdate-common's add_image_to_swu uses
 # os.path.basename on SWUPDATE_IMAGES entries, so subdir-relative
 # paths cpio under the bare name.
-SWU_STAGEDIR = "bridgething-update-prod-stage"
+SWU_STAGEDIR = "${PN}-stage"
 SWUPDATE_IMAGES = "${SWU_STAGEDIR}/boot.img ${SWU_STAGEDIR}/system.img.zck.zckheader"
 
-# Must match bridgething-prod-image.bb's SUPERBIRD_ROOTFS_TYPE - used
-# in do_stage_swu_inputs to find the right
-# `<link>.<rootfs_ext>.zck.zckheader` artifact in DEPLOY_DIR_IMAGE.
-# Bitbake variables are recipe-scoped, so this can't inherit from the
-# image recipe; keep both pinned to the same value.
+# Must match the source image's SUPERBIRD_ROOTFS_TYPE. bbvars are
+# recipe-scoped so this can't inherit from the image; keep both
+# pinned to squashfs-zst.
 SUPERBIRD_ROOTFS_TYPE = "squashfs-zst"
 
 # No signing for v1. Bridgething's gateway transport is the only
@@ -91,27 +116,22 @@ addtask render_sw_description after do_unpack before do_swuimage
 
 # Materialize bare-named symlinks under
 # ${DEPLOY_DIR_IMAGE}/${SWU_STAGEDIR}/ so SWUPDATE_IMAGES picks
-# them up under the right cpio entry names. Avoids a race with the
-# dev image's flashthing_zip rewriting the generic
-# DEPLOY_DIR_IMAGE/system.img alias.
-#
-# SUPERBIRD_ROOTFS_TYPE picks the rootfs filesystem (squashfs-zst on
-# prod). The zchunk-converted artifact is named
-# `<link_name>.<ROOTFS_TYPE>.zck.zckheader` by Yocto's
-# image_types_zchunk class, so we follow the same suffix here.
+# them up under the right cpio entry names. The link names follow
+# Yocto's IMAGE_LINK_NAME convention, mirrored in
+# BRIDGETHING_OTA_SOURCE_LINKNAME above.
 do_stage_swu_inputs() {
     set -eu
     stage="${DEPLOY_DIR_IMAGE}/${SWU_STAGEDIR}"
     mkdir -p "$stage"
     rm -f "$stage/boot.img" "$stage/system.img.zck.zckheader"
-    ln -s "../bridgething-prod-image-superbird.boot.img" \
+    ln -s "../${BRIDGETHING_OTA_SOURCE_LINKNAME}.boot.img" \
         "$stage/boot.img"
-    ln -s "../bridgething-prod-image-superbird.${SUPERBIRD_ROOTFS_TYPE}.zck.zckheader" \
+    ln -s "../${BRIDGETHING_OTA_SOURCE_LINKNAME}.${SUPERBIRD_ROOTFS_TYPE}.zck.zckheader" \
         "$stage/system.img.zck.zckheader"
 }
 addtask stage_swu_inputs after do_unpack before do_swuimage
-do_stage_swu_inputs[depends] += "bridgething-prod-image:do_flashthing_zip"
+do_stage_swu_inputs[depends] += "${BRIDGETHING_OTA_SOURCE_IMAGE}:do_flashthing_zip"
 
-# Make sure the prod image's flashthing zip + boot.img + zck
+# Make sure the source image's flashthing zip + boot.img + zck
 # artifacts are in DEPLOY_DIR_IMAGE before we try to pack them.
-do_swuimage[depends] += "bridgething-prod-image:do_flashthing_zip"
+do_swuimage[depends] += "${BRIDGETHING_OTA_SOURCE_IMAGE}:do_flashthing_zip"

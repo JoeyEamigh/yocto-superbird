@@ -25,7 +25,8 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0009-Input-rotary-encoder-fall-back-to-fwnode_irq_get.patch \
            file://0010-Input-tlsc6x-add-Telink-tlsc6x-touchscreen-driver.patch \
            file://0011-tty-meson-uart-port-downstream-driver.patch \
-           file://0012-pinctrl-meson-add-INPUT_ENABLE-and-bare-DRIVE_STRENGTH.patch"
+           file://0012-pinctrl-meson-add-INPUT_ENABLE-and-bare-DRIVE_STRENGTH.patch \
+           file://0013-irqchip-meson-gpio-encode-trigger-type-into-hwirq.patch"
 
 inherit kernel
 

@@ -176,3 +176,13 @@ cdp port="9223":
 # delta handler fetches when bridgething daemon's bridge isn't up.
 delta-stub:
   scripts/superbird-delta-stub.py
+
+# Delta-OTA from a booted device. Spawns the host delta-stub HTTP
+# server, scp's the .swu manifest, runs swupdate via bridgething-ab
+# apply (which writes the inactive slot + atomically flips
+# active_slot via the manifest's bootenv block), then reboots.
+# Defaults to the dev image (bridgething-update-dev). Pass --image
+# prod for the prod variant. Skips the burn-mode-then-flashthing
+# loop so iteration is way faster than `just flash`.
+ota *args:
+  scripts/bridgething-ota {{args}}

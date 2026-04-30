@@ -163,25 +163,42 @@
 	/* Rotary scroll wheel. GPIOZ_8 + GPIOZ_9 carry a quadrature/gray-code
 	 * signal; rotary-encoder driver decodes it into REL_HWHEEL events.
 	 *
-	 * The driver uses gpiod_to_irq() on each line, but Amlogic gpiochips
-	 * don't implement .to_irq - IRQ-capable GPIOs need an explicit
-	 * gpio_intc edge-mapping in DT. Each Z-bank pin gets one of the 8
-	 * gpio_intc channels; we burn 2 of them on the wheel. */
+	 * G12A's gpio_intc dedups (hwirq, type) pairs in irq_find_mapping
+	 * the standard way (one virq per hwirq), so requesting both edges
+	 * of a single gpio line through one DT entry would force a single-
+	 * edge configuration. We list each gpio twice - once for RISING,
+	 * once for FALLING - and the rotary-encoder driver registers all
+	 * four IRQs with the same handler. The kernel state machine reads
+	 * GPIO levels on every IRQ, so it doesn't matter which edge fired.
+	 *
+	 * Catching every transition is required: a 2-channel quadrature
+	 * encoder's gray-code state machine has to see every state change
+	 * to track direction. Single-edge per line drops half the
+	 * transitions and lets the state machine mistake a forward click
+	 * for backward when state advances past an unobserved intermediate
+	 * position.
+	 *
+	 * The four entries burn four of the eight gpio_intc channels.
+	 */
 	rotary {
 		compatible = "rotary-encoder";
-		gpios = <&gpio GPIOZ_8 GPIO_ACTIVE_LOW>,
-			<&gpio GPIOZ_9 GPIO_ACTIVE_LOW>;
 		/*
-		 * G12A's gpio_intc (axg_params) doesn't support EDGE_BOTH -
-		 * meson_gpio_irq_set_type returns -EINVAL. We pick a single
-		 * edge per line; for a 2-channel quadrature encoder this is
-		 * enough to detect rotation as each click flips both lines
-		 * once. RISING matches the released-state polarity (lines
-		 * are pulled high when the wheel is at a detent).
+		 * Z_9 listed before Z_8 so the rotary-encoder driver
+		 * decodes the gray-code with the inverted direction sense
+		 * relative to the physical wheel. Combined with libinput's
+		 * default natural-scroll inversion on a wheel-only pointer
+		 * (cap:p left scroll-nat in libinput-list-devices), the
+		 * round trip lands at "physical clockwise spin = content
+		 * scrolls right". Swap the two entries back if libinput
+		 * ever changes its default for hwheel-only pointers.
 		 */
+		gpios = <&gpio GPIOZ_9 GPIO_ACTIVE_LOW>,
+			<&gpio GPIOZ_8 GPIO_ACTIVE_LOW>;
 		interrupts-extended =
 			<&gpio_intc IRQID_GPIOZ_8 IRQ_TYPE_EDGE_RISING>,
-			<&gpio_intc IRQID_GPIOZ_9 IRQ_TYPE_EDGE_RISING>;
+			<&gpio_intc IRQID_GPIOZ_9 IRQ_TYPE_EDGE_RISING>,
+			<&gpio_intc IRQID_GPIOZ_8 IRQ_TYPE_EDGE_FALLING>,
+			<&gpio_intc IRQID_GPIOZ_9 IRQ_TYPE_EDGE_FALLING>;
 		linux,axis = <REL_HWHEEL>;
 		rotary-encoder,encoding = "gray";
 		rotary-encoder,relative-axis;

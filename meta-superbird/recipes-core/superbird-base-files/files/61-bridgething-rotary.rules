@@ -1,18 +1,20 @@
-# Spotify Car Thing rotary scroll wheel — keep its REL_HWHEEL events
-# flowing for in-app scroll, but don't expose it as a wayland pointer.
-# Without these overrides, libinput tags the device as a pointer
-# (EV_REL with REL_HWHEEL is enough for libinput's classification),
-# weston binds wl_pointer to the seat, every wheel rotation triggers
-# a pointer focus event, and the cursor flashes onto the panel.
+# Spotify Car Thing rotary scroll wheel. The kernel rotary-encoder
+# driver only declares EV_REL/REL_HWHEEL on this evdev node, which
+# udev's input-id classifier doesn't recognise as a pointer (it looks
+# for buttons or REL_X/REL_Y), so ID_INPUT_MOUSE never gets set on
+# its own. libinput then declines to use the device entirely
+# ("not tagged as supported input device") and no scroll events
+# reach wayland clients.
 #
-# We strip every libinput-respected mouse/keyboard tag, then set
-# LIBINPUT_DEVICE_GROUP_TYPE=-1 to make libinput skip pointer-capability
-# detection. The rotary still emits axis events for clients that bind
-# wl_pointer for OTHER reasons (e.g. touchscreen, future mouse), so
-# scroll keeps working in chromium without the cursor ever surfacing.
+# Force ID_INPUT_MOUSE so libinput accepts the device and routes
+# REL_HWHEEL through wl_pointer.axis. The cursor that would normally
+# follow from any pointer device being bound to the seat is suppressed
+# at the compositor level by the bridgething-cursor-suppress weston
+# module, so the panel stays cursor-free.
+#
+# LIBINPUT_DEVICE_GROUP pins the device into its own group so libinput
+# doesn't try to merge it with the touchscreen or any other input.
 
 ACTION=="add|change", SUBSYSTEM=="input", ATTRS{name}=="rotary", \
-    ENV{ID_INPUT_MOUSE}="", \
-    ENV{ID_INPUT_KEY}="", \
-    ENV{ID_INPUT_KEYBOARD}="", \
+    ENV{ID_INPUT_MOUSE}="1", \
     ENV{LIBINPUT_DEVICE_GROUP}="superbird-rotary"

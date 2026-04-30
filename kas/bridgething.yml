@@ -11,6 +11,7 @@ machine: superbird
 target:
   - bridgething-dev-image
   - bridgething-update
+  - bridgething-update-dev
   - bridgething-prod-image
   - bridgething-update-prod
 
