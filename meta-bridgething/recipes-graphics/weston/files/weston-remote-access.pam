@@ -1,0 +1,14 @@
+#%PAM-1.0
+# weston's vnc-backend has no native "no auth" mode: it always passes
+# the VNC client's credentials through the weston-remote-access PAM
+# service. This file replaces upstream weston's default (which delegates
+# to system `login` and so requires a real local account password) with
+# pam_permit, which approves any credentials including empty strings.
+#
+# This config ships only on the dev image, via the bridgething weston
+# bbappend's ${PN}-vnc-backend split package. Prod images don't pull
+# vnc-backend.so so the file is moot for them. The dev device's only
+# network is the private USB-CDC gadget link to the dev host, which is
+# why dropping VNC auth is safe here.
+auth    required pam_permit.so
+account required pam_permit.so

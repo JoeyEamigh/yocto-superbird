@@ -40,12 +40,22 @@
  * the offset-104 deref ([damage+104]) loads garbage and then tries
  * to walk it as compositor->seat_list.
  *
+ * VNC-aware bypass: weston's vnc-backend creates a per-client seat
+ * named "VNC Client" (libweston/backend-vnc/vnc.c:767). When at
+ * least one such seat exists, suppression is skipped for the frame -
+ * the cursor stays visible on the panel for that frame too, but
+ * remote vnc operators get a real cursor to aim with. Once the VNC
+ * client disconnects and its seat is destroyed, normal suppression
+ * resumes. The dev image is the only image that loads vnc-backend.so
+ * so this branch is dead code on prod.
+ *
  * Loaded via [core] modules=bridgething-cursor-suppress.so in
  * weston.ini. Cleanup on compositor destroy walks and frees its
  * per-output listener records.
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <wayland-server-core.h>
 #include <libweston/libweston.h>
 #include <libweston/zalloc.h>
@@ -65,10 +75,26 @@ struct cs_ctx {
 	struct wl_list outputs;
 };
 
+static bool
+any_vnc_seat_present(struct weston_compositor *compositor)
+{
+	struct weston_seat *seat;
+
+	wl_list_for_each(seat, &compositor->seat_list, link) {
+		if (seat->seat_name &&
+		    strcmp(seat->seat_name, "VNC Client") == 0)
+			return true;
+	}
+	return false;
+}
+
 static void
 hide_pointer_sprites(struct weston_compositor *compositor)
 {
 	struct weston_seat *seat;
+
+	if (any_vnc_seat_present(compositor))
+		return;
 
 	wl_list_for_each(seat, &compositor->seat_list, link) {
 		struct weston_pointer *pointer =

@@ -141,7 +141,7 @@ Chromium DevTools (CDP) over SSH tunnel, since chromium ≥ M111 ignores
 `--remote-debugging-address`:
 
 ```bash
-just cdp     # then http://localhost:9222/json/version
+just cdp     # then http://localhost:9223/json/version
 ```
 
 UART (kernel panic / pre-SSH boot diagnostics):

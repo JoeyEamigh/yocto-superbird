@@ -41,6 +41,15 @@ do_install() {
         ${D}${systemd_system_unitdir}/bridgething-clock-tick.service
     install -m 0644 ${S}/bridgething-clock-tick.timer \
         ${D}${systemd_system_unitdir}/bridgething-clock-tick.timer
+
+    # Mask systemd-timesyncd. bridgething-clock owns time semantics on this
+    # device; timesyncd has no path to an NTP source (no internet, no RTC) and
+    # holds the unit open ~45s on shutdown waiting for an in-flight NTP/DNS
+    # retry to time out. A /dev/null symlink in /etc/systemd/system makes
+    # systemd treat the unit as masked and refuse to start it, regardless of
+    # any wants symlinks shipped by the systemd package.
+    install -d ${D}${sysconfdir}/systemd/system
+    ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-timesyncd.service
 }
 
 FILES:${PN} = " \
@@ -48,4 +57,5 @@ FILES:${PN} = " \
     ${systemd_system_unitdir}/bridgething-clock.service \
     ${systemd_system_unitdir}/bridgething-clock-tick.service \
     ${systemd_system_unitdir}/bridgething-clock-tick.timer \
+    ${sysconfdir}/systemd/system/systemd-timesyncd.service \
 "

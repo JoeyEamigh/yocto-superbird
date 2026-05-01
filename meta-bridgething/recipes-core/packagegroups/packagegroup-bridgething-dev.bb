@@ -28,6 +28,7 @@ RDEPENDS:${PN} = " \
     kmscube \
     glmark2 \
     bridgething-gltest \
+    wayland-utils \
     \
     ydotool \
     \
@@ -39,6 +40,8 @@ RDEPENDS:${PN} = " \
     sed \
     tar \
     util-linux \
+    curl \
+    socat \
     \
     vim-tiny \
     rsync \
@@ -46,6 +49,16 @@ RDEPENDS:${PN} = " \
     tmux \
     jq \
     file \
+    iproute2 \
+    iproute2-ss \
+    lsof \
+    psmisc \
+    bind-utils \
+    gdb \
+    gdbserver \
+    inotify-tools \
+    mmc-utils \
+    smartmontools \
     \
     htop \
     iotop \

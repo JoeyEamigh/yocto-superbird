@@ -1,0 +1,42 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] backend-vnc: skip getpwnam guard in vnc_handle_auth
+
+Bridgething's dev image runs weston-vnc with
+--disable-transport-layer-security and a pam_permit
+/etc/pam.d/weston-remote-access service so VNC is a zero-friction debug
+surface on the private USB-CDC gadget link between device and dev host.
+
+Upstream's vnc_handle_auth precondition - that the VNC username map to
+a real local account whose uid matches weston's process uid - forces
+every connect to type "root" before pam_permit gets to wave the
+credentials through. That adds friction without security benefit on a
+single-account dev image whose only network reachability is the host
+USB cable.
+
+Skip the getpwnam check and let PAM make the decision unconditionally.
+On prod images this code path is unreachable because vnc-backend.so
+isn't packaged.
+
+Upstream-Status: Inappropriate [downstream policy]
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+ libweston/backend-vnc/vnc.c | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/libweston/backend-vnc/vnc.c b/libweston/backend-vnc/vnc.c
+--- a/libweston/backend-vnc/vnc.c
++++ b/libweston/backend-vnc/vnc.c
+@@ -485,13 +485,6 @@ vnc_pointer_event(struct nvnc_client *client, uint16_t x, uint16_t y,
+ static bool
+ vnc_handle_auth(const char *username, const char *password, void *userdata)
+ {
+-	struct passwd *pw = getpwnam(username);
+-
+-	if (!pw || pw->pw_uid != getuid()) {
+-		weston_log("VNC: wrong user '%s'\n", username);
+-		return false;
+-	}
+-
+ 	return weston_authenticate_user(username, password);
+ }
+

@@ -13,3 +13,12 @@ SRC_URI:remove = " \
     file://0001-meson-Use-new-pkgconfig-for-aml1.patch \
     file://0001-Use-aml-v1.patch \
 "
+
+# Build with TLS support even though dev-image weston-vnc launches with
+# --disable-transport-layer-security. weston-15's vnc-backend always
+# calls into neatvnc's auth setup at startup; on a TLS-less neatvnc that
+# call returns "Failed to enable authentication" and the backend bails
+# before listening, regardless of weston's --disable-tls flag. With TLS
+# linked in (gnutls), the auth path resolves cleanly and weston honours
+# the runtime opt-out, giving us plaintext VNC + no auth.
+PACKAGECONFIG:append = " tls"

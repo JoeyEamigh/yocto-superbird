@@ -8,14 +8,27 @@
 # daemon serves the active webapp at / and proxies on-demand assets via
 # the /_gateway/ namespace.
 #
-# CDP is unconditionally on at 9222. chromium ≥ M111 silently ignores
+# CDP is unconditionally on at 9223. chromium ≥ M111 silently ignores
 # --remote-debugging-address=<non-localhost> (Google removed the bind-
 # elsewhere path for security), so the listener is always 127.0.0.1.
 # The host-side `bridgething-cdp` helper opens an SSH port-forward to
-# pull 9222 to the dev host. --remote-allow-origins=* still matters
-# because chrome rejects DevTools WS upgrades from non-localhost
-# origins by default; with the tunnel, the host browser hits localhost
-# (= the tunnel endpoint) and the origin check passes.
+# pull 9223 to the dev host. We bind 9223 (not chromium's traditional
+# 9222) because chromium hardcodes its bind port into every
+# webSocketDebuggerUrl it announces in /json/version + /json/list:
+# the tunnel must use the SAME port number on the host so that when
+# chrome://inspect on the dev host parses those URLs and tries to
+# open a DevTools session, the ws://127.0.0.1:9223/... target lands
+# back through the tunnel onto the device. With matching ports the
+# announced URL is reachable from the dev host as-is. As a side
+# benefit, this avoids colliding with a desktop chromium that
+# typically owns 9222 itself.
+#
+# --remote-allow-origins=* is required because chromium rejects
+# DevTools WS upgrades from non-localhost origins by default
+# (chrome://inspect, devtools://devtools, and any IDE that initiates
+# from a non-localhost Origin all hit a 403). The Origin header is
+# set by the *initiating page*, not the TCP destination, so the
+# tunnel does NOT make the origin check pass on its own.
 #
 # --use-angle=gles overrides the chromium /usr/bin/chromium wrapper's
 # default --use-angle=gles-egl. The wrapper's value is INVALID - chromium
@@ -70,6 +83,7 @@ exec /usr/bin/chromium \
     --disable-extensions \
     --disable-features=AcceleratedVideoDecode \
     --user-data-dir=/run/chromium-data \
-    --remote-debugging-port=9222 \
+    --remote-debugging-port=9223 \
+    --remote-allow-origins=* \
     ${BRIDGETHING_KIOSK_EXTRA} \
     "${BRIDGETHING_KIOSK_URL}"

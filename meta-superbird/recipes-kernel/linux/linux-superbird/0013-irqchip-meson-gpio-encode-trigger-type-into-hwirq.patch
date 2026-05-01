@@ -1,4 +1,3 @@
-From 1f0963ec8b455f337bec4909708788b602e3d589 Mon Sep 17 00:00:00 2001
 From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
 Date: Thu, 30 Apr 2026 00:50:43 -0400
 Subject: [PATCH] irqchip/meson-gpio: encode trigger type into hwirq for
