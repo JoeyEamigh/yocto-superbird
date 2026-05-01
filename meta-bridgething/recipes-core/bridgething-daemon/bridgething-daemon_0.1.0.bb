@@ -14,7 +14,8 @@ inherit cargo systemd pkgconfig
 SRC_URI = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething.service \
            file://bridgething.conf \
-           file://bridgething-launch"
+           file://bridgething-launch \
+           file://bridgething-dev.conf"
 SRCREV = "${AUTOREV}"
 
 # Cargo fetches crates.io directly during do_compile. Trades full crate-mirror
@@ -73,7 +74,16 @@ do_install() {
     install -d ${D}${nonarch_libdir}/tmpfiles.d
     install -m 0644 ${UNPACKDIR}/bridgething.conf \
         ${D}${nonarch_libdir}/tmpfiles.d/bridgething.conf
+
+    install -d ${D}${systemd_system_unitdir}/bridgething.service.d
+    install -m 0644 ${UNPACKDIR}/bridgething-dev.conf \
+        ${D}${systemd_system_unitdir}/bridgething.service.d/dev.conf
 }
+
+# Split the dev-only drop-in into its own sub-package so the prod image
+# never gets trace logging or UART log mirroring. packagegroup-bridgething-dev
+# RDEPENDS this package, which pulls in ${PN} as well.
+PACKAGES =+ "${PN}-dev-config"
 
 FILES:${PN} = " \
     ${libexecdir}/bridgething \
@@ -81,6 +91,10 @@ FILES:${PN} = " \
     ${systemd_system_unitdir}/bridgething.service \
     ${nonarch_libdir}/tmpfiles.d/bridgething.conf \
 "
+
+FILES:${PN}-dev-config = "${systemd_system_unitdir}/bridgething.service.d/dev.conf"
+RDEPENDS:${PN}-dev-config = "${PN}"
+SUMMARY:${PN}-dev-config = "Dev-image drop-in: trace RUST_LOG + log mirror to /dev/console"
 
 # Cargo.toml's [profile.release] has strip = "symbols", so the binary lands
 # already stripped. Yocto's QA flags this because it would normally split
