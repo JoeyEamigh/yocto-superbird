@@ -59,6 +59,7 @@ RDEPENDS:${PN} = " \
     inotify-tools \
     mmc-utils \
     smartmontools \
+    bluez5-noinst-tools \
     \
     htop \
     iotop \

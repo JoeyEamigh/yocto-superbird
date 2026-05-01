@@ -229,6 +229,15 @@ main() {
     if wait_for_hci0; then
         program_efuse_bdaddr
     fi
+    # Tell systemd we are READY only after the BDADDR is programmed.
+    # bluetooth.service is ordered After this unit (via Before=); with
+    # Type=notify it waits for this signal before bluetoothd discovers
+    # hci0, so bluetoothd reads the efused MAC instead of the patchram
+    # default. NOTIFY_SOCKET is unset when this script runs outside
+    # systemd (manual invocation, ssh debugging) - skip silently.
+    if [ -n "${NOTIFY_SOCKET:-}" ]; then
+        systemd-notify --ready
+    fi
     wait "${BTATTACH_PID}"
 }
 
