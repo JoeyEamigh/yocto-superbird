@@ -1,27 +1,48 @@
 #!/usr/bin/env bash
 # Bridgething USB gadget bring-up.
 #
-# Multi-config layout (mirrors kernel g_multi):
-#   - c.1 = RNDIS (host_if name "usb_rndis"), tagged with Microsoft OS 1.0
-#     compat IDs so Windows picks this config and loads its inbox RNDIS
-#     driver without any .inf install.
-#   - c.2 = CDC-ECM (host_if name "usb_ecm"). macOS and most Linux distros
-#     either prefer this config outright or fall back to it when the host
-#     has no RNDIS support; it is also the inbox driver path on Windows
-#     10 1809+.
+# Single-config composite gadget exposing three functions to the host:
+#   - rndis.usb0  (urndis0)  - 10.42.2.0/24 subnet. Microsoft OS 1.0
+#                              compat-id triggers Windows' inbox RNDIS
+#                              driver, no .inf needed. Device side is
+#                              10.42.2.2; host gets a DHCP lease in
+#                              10.42.2.10-17.
+#   - ecm.usb0    (uecm0)    - 10.42.1.0/24 subnet. Linux/macOS pick
+#                              this via the standard CDC class triplet;
+#                              Windows 10 1809+ inbox CDC-ECM also works.
+#                              Device side is 10.42.1.2; host gets a
+#                              DHCP lease in 10.42.1.10-17.
+#   - ffs.adb     (ep0/1/2)  - FunctionFS slot wired up at boot but driven
+#                              by adbd in userspace; adbd writes the USB
+#                              descriptors to /dev/usb-ffs/adb/ep0 before
+#                              the UDC is bound.
 #
-# Only one configuration is bound on the host at a time, so exactly one of
-# usb_rndis / usb_ecm gets carrier. systemd-networkd ships a .network file
-# for each interface (see 10-usb-rndis.network / 11-usb-ecm.network) and
-# runs an internal DHCP server handing 10.42.1.1 to whichever interface is
-# active so the host gets a routable address with zero per-OS setup. Avahi
-# advertises bridgething.local on the same interfaces.
+# Each network function lives on its own /24 - no bridge - so Linux's
+# kernel routes 10.42.1.2 unambiguously through ECM (faster + lower
+# RNDIS protocol overhead) and Windows reaches 10.42.2.2 through RNDIS.
+# Each interface runs systemd-networkd's internal DHCP server. Avahi
+# publishes bridgething.local on both, so per-OS hostname resolution
+# returns whichever subnet the host's interface is on.
+#
+# Three IN endpoints carry bulk traffic (RNDIS, ECM, ADB) plus two
+# interrupt-IN for RNDIS / ECM notifications - 5 dedicated TX FIFOs total.
+# G12A's DWC2 reserves 712 dwords of SPRAM; the per-EP TX layout is set
+# in the board DTS via &dwc2 { g-tx-fifo-size = ... } so the three bulk
+# slots get 128 dwords each (one HS maxpacket).
+#
+# Critical: this script does NOT bind the UDC. adbd's systemd unit
+# (android-tools-adbd.service with our drop-in) opens the FFS ep0 to
+# write descriptors and then ExecStartPost echoes the UDC. Binding the
+# UDC before adbd has written ep0 descriptors leaves the ADB function
+# half-registered and the host enumeration of the gadget either hangs
+# or omits ADB entirely.
 #
 # Runs once at boot via bridgething-usb-gadget.service.
 set -euo pipefail
 
 CFG=/sys/kernel/config/usb_gadget/bridgething
 UDC_DIR=/sys/class/udc
+FFS_MOUNT=/dev/usb-ffs/adb
 
 if ! mountpoint -q /sys/kernel/config; then
     mount -t configfs none /sys/kernel/config
@@ -31,10 +52,12 @@ fi
 # applies changes cleanly (useful during script iteration via SSH).
 if [[ -d "$CFG" ]]; then
     echo "" > "$CFG/UDC" 2>/dev/null || true
+    if mountpoint -q "$FFS_MOUNT"; then
+        umount "$FFS_MOUNT" || true
+    fi
     for link in "$CFG"/configs/*/*; do
         [[ -L "$link" ]] && rm -f "$link"
     done
-    # OS desc may symlink a config; remove it before tearing configs down.
     for link in "$CFG"/os_desc/*; do
         [[ -L "$link" ]] && rm -f "$link"
     done
@@ -59,9 +82,16 @@ mkdir -p "$CFG"
 echo 0x1d6b > "$CFG/idVendor"
 echo 0x0104 > "$CFG/idProduct"
 echo 0x0100 > "$CFG/bcdDevice"
-# bcdUSB 0x0200 keeps wide host compatibility; OS 1.0 descriptors don't need
-# 2.1, and BOS/OS 2.0 add no value here (RNDIS inbox driver works via OS 1.0).
 echo 0x0200 > "$CFG/bcdUSB"
+
+# Leave bDeviceClass / bDeviceSubClass / bDeviceProtocol at 0
+# (per-interface). Setting the IAD class triplet (0xef/0x02/0x01) at
+# device level looks correct for a multi-function composite, but the
+# adb host client's libusb hotplug filter silently skips devices with
+# a non-zero bDeviceClass - hosts then never see the ADB function and
+# `adb devices` stays empty even though the kernel-side gadget is fine.
+# RNDIS and CDC-ECM each ship their own per-function IAD descriptor
+# regardless, so the OSes that need it still get it.
 
 mkdir -p "$CFG/strings/0x409"
 echo "bridgething"           > "$CFG/strings/0x409/manufacturer"
@@ -71,27 +101,23 @@ echo "$SERIAL"               > "$CFG/strings/0x409/serialnumber"
 
 # Stable MACs derived from the device serial so two Superbirds on the same
 # host don't collide. Locally-administered bit (0x02) set, multicast bit
-# clear. Each function gets its own (host_addr, dev_addr) pair so the host
-# sees distinct MACs across RNDIS and ECM (lets NetworkManager scope
-# profiles per-function if a host ever ends up with both visible).
+# clear. Each network function gets its own (host_addr, dev_addr) pair.
 mac_suffix=$(echo -n "$SERIAL" | sha256sum | cut -c1-8 | sed 's/../&:/g; s/:$//')
 RNDIS_HOST_MAC="02:11:22:${mac_suffix:0:8}"
 RNDIS_DEV_MAC="02:11:33:${mac_suffix:0:8}"
 ECM_HOST_MAC="02:11:44:${mac_suffix:0:8}"
 ECM_DEV_MAC="02:11:55:${mac_suffix:0:8}"
 
-# Microsoft OS 1.0 descriptors. Windows queries the device with the
-# vendor-specific request 0xCD; the gadget framework intercepts that and
-# returns the per-function compatible-id table below. The string "MSFT100"
-# (UTF-16LE, 7 chars + a one-byte vendor code) is what Windows looks up
-# via a magic string descriptor at index 0xEE - configfs handles that for
-# us once `use=1` is set.
+# Microsoft OS 1.0 descriptors. Windows queries the device with vendor
+# request 0xCD; the gadget framework intercepts that and returns the
+# per-function compatible-id table. The "MSFT100" string descriptor at
+# index 0xEE is auto-generated once `use=1` is set.
 echo 1       > "$CFG/os_desc/use"
 echo 0xcd    > "$CFG/os_desc/b_vendor_code"
 echo MSFT100 > "$CFG/os_desc/qw_sign"
 
-# RNDIS function. The compatible-id "RNDIS" + sub-compatible "5162001"
-# triggers Windows' inbox RNDIS-over-USB driver, no .inf required.
+# RNDIS function. Compat-id "RNDIS" + sub-compat "5162001" triggers
+# Windows' inbox RNDIS-over-USB driver, no .inf required.
 mkdir -p "$CFG/functions/rndis.usb0"
 echo "$RNDIS_HOST_MAC" > "$CFG/functions/rndis.usb0/host_addr"
 echo "$RNDIS_DEV_MAC"  > "$CFG/functions/rndis.usb0/dev_addr"
@@ -102,34 +128,43 @@ echo "RNDIS"           > "$CFG/functions/rndis.usb0/os_desc/interface.rndis/comp
 echo "5162001"         > "$CFG/functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id"
 
 # CDC-ECM function. No OS desc needed - Linux/macOS recognise it via the
-# standard CDC class triplet, and Windows 10 1809+ ships an inbox driver
-# that auto-installs the same way.
+# standard CDC class triplet, and Windows 10 1809+ ships an inbox driver.
 mkdir -p "$CFG/functions/ecm.usb0"
 echo "$ECM_HOST_MAC" > "$CFG/functions/ecm.usb0/host_addr"
 echo "$ECM_DEV_MAC"  > "$CFG/functions/ecm.usb0/dev_addr"
 echo "uecm%d"        > "$CFG/functions/ecm.usb0/ifname"
 
-# Config 1: RNDIS. Windows always selects the first config by default and
-# the OS-desc symlink below pins this association explicitly.
-mkdir -p "$CFG/configs/c.1/strings/0x409"
-echo "RNDIS" > "$CFG/configs/c.1/strings/0x409/configuration"
-echo 250     > "$CFG/configs/c.1/MaxPower"
-ln -sf "$CFG/functions/rndis.usb0" "$CFG/configs/c.1/"
-ln -sf "$CFG/configs/c.1" "$CFG/os_desc/c.1"
+# FunctionFS slot for adbd. The kernel exposes /dev/usb-ffs/adb once we
+# mount functionfs at the path; adbd opens ep0 from there to write the
+# class=0xff sub=0x42 proto=0x01 ADB interface descriptor and then handles
+# the bulk-in/out streams. The configfs instance suffix ("adb" in
+# functions/ffs.adb) MUST match the FunctionFS mount source name in the
+# `mount -t functionfs adb ...` invocation below.
+mkdir -p "$CFG/functions/ffs.adb"
+mkdir -p "$FFS_MOUNT"
+mount -t functionfs adb "$FFS_MOUNT"
 
-# Config 2: CDC-ECM. macOS and Linux without rndis_host fall back to this.
-mkdir -p "$CFG/configs/c.2/strings/0x409"
-echo "CDC-ECM" > "$CFG/configs/c.2/strings/0x409/configuration"
-echo 250       > "$CFG/configs/c.2/MaxPower"
-ln -sf "$CFG/functions/ecm.usb0" "$CFG/configs/c.2/"
+# Single config holds all three functions. Composite layout means Linux
+# sees both network interfaces simultaneously - usb-br0 on the device
+# bridges traffic so reaching 10.42.1.2 works through either one.
+mkdir -p "$CFG/configs/c.1/strings/0x409"
+echo "Bridgething" > "$CFG/configs/c.1/strings/0x409/configuration"
+echo 250           > "$CFG/configs/c.1/MaxPower"
+ln -sf "$CFG/functions/rndis.usb0" "$CFG/configs/c.1/"
+ln -sf "$CFG/functions/ecm.usb0"   "$CFG/configs/c.1/"
+ln -sf "$CFG/functions/ffs.adb"    "$CFG/configs/c.1/"
+ln -sf "$CFG/configs/c.1"          "$CFG/os_desc/c.1"
 
 UDC=$(ls "$UDC_DIR" | head -n 1)
 if [[ -z "$UDC" ]]; then
     echo "no UDC available under $UDC_DIR; is dwc2 probed?" >&2
     exit 1
 fi
-echo "$UDC" > "$CFG/UDC"
 
-echo "gadget bound to $UDC"
-echo "  RNDIS   c.1  host=$RNDIS_HOST_MAC dev=$RNDIS_DEV_MAC ifname=urndis0"
-echo "  CDC-ECM c.2  host=$ECM_HOST_MAC  dev=$ECM_DEV_MAC  ifname=uecm0"
+# UDC bind is intentionally deferred to adbd's ExecStartPost. Writing the
+# UDC here would expose the gadget before adbd has populated the FFS ep0
+# descriptors, leaving the ADB function half-registered.
+echo "gadget composed for $UDC (UDC bind deferred to adbd)"
+echo "  RNDIS    host=$RNDIS_HOST_MAC dev=$RNDIS_DEV_MAC ifname=urndis0"
+echo "  CDC-ECM  host=$ECM_HOST_MAC  dev=$ECM_DEV_MAC  ifname=uecm0"
+echo "  FFS-ADB  mounted at $FFS_MOUNT"

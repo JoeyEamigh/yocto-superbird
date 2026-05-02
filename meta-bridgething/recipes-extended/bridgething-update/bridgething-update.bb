@@ -17,19 +17,25 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 # OTA offsets — stock AML MPT geometry. Both dev + prod images share
 # this layout now that squashfs makes the lean shape enough for the
 # kitchen-sink dev install. boot_a / boot_b live where AML MPT puts
-# them; system_a / system_b are the standard 516 MB slots.
+# them; dtbo_a / dtbo_b hold the raw DTB that u-boot loads at
+# fdt_addr (boot.img's second-stage DTB is ignored by stock u-boot,
+# so a kernel-only OTA without dtbo would leave the new kernel
+# parsing the old DTB); system_a / system_b are the standard 516 MB
+# slots.
 SUPERBIRD_OTA_BOOT_A_OFFSET   = "0xd600000"
 SUPERBIRD_OTA_BOOT_B_OFFSET   = "0xee00000"
+SUPERBIRD_OTA_DTBO_A_OFFSET   = "0xac00000"
+SUPERBIRD_OTA_DTBO_B_OFFSET   = "0xb800000"
 SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
 SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 
 # Pull the artifacts from DEPLOY_DIR_IMAGE by their stable
 # sw-description names. The superbird-flashthing bbclass drops
-# `boot.img` + `system.img` symlinks in DEPLOY_DIR_IMAGE that point
-# at the timestamped rootfs artifact under whatever extension
-# SUPERBIRD_ROOTFS_TYPE selected (ext4, squashfs-zst, etc.) - the OTA
-# pipeline is filesystem-agnostic.
-SWUPDATE_IMAGES = "boot.img system.img"
+# `boot.img` + `dtb` + `system.img` symlinks in DEPLOY_DIR_IMAGE
+# that point at the timestamped artifacts under whatever extension
+# SUPERBIRD_ROOTFS_TYPE selected (ext4, squashfs-zst, etc.) - the
+# OTA pipeline is filesystem-agnostic.
+SWUPDATE_IMAGES = "boot.img dtb system.img"
 
 # No signing for v1. Bridgething's gateway transport is the only
 # delivery channel and runs over an authenticated bluetooth pair.
@@ -55,6 +61,8 @@ do_render_sw_description() {
         -e "s|@@VERSION@@|${SWU_VERSION}|g" \
         -e "s|@@BOOT_A_OFFSET@@|${SUPERBIRD_OTA_BOOT_A_OFFSET}|g" \
         -e "s|@@BOOT_B_OFFSET@@|${SUPERBIRD_OTA_BOOT_B_OFFSET}|g" \
+        -e "s|@@DTBO_A_OFFSET@@|${SUPERBIRD_OTA_DTBO_A_OFFSET}|g" \
+        -e "s|@@DTBO_B_OFFSET@@|${SUPERBIRD_OTA_DTBO_B_OFFSET}|g" \
         -e "s|@@SYSTEM_A_OFFSET@@|${SUPERBIRD_OTA_SYSTEM_A_OFFSET}|g" \
         -e "s|@@SYSTEM_B_OFFSET@@|${SUPERBIRD_OTA_SYSTEM_B_OFFSET}|g" \
         ${UNPACKDIR}/sw-description

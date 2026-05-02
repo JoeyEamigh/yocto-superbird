@@ -328,6 +328,24 @@
 	dr_mode = "peripheral";
 };
 
+/* DWC2 peripheral-side FIFO layout. G12A reserves 712 dwords of dedicated
+ * SPRAM and the per-EP TX budget is total - g-rx-fifo-size - g-np-tx-fifo-size.
+ * The mainline default g-np-tx-fifo-size = <128> is sized for shared-FIFO
+ * mode; in dedicated mode (which we use) NP-TX only carries EP0 control,
+ * so 32 dwords is plenty and frees 96 dwords for per-EP TX. The five
+ * IN endpoints in our composite gadget split into three bulk-IN
+ * (RNDIS, CDC-ECM, ADB) at 128 dwords each (one HS maxpacket) and two
+ * interrupt-IN (RNDIS notify, CDC-ECM notify) at 16 dwords each, total
+ * 416 dwords. Without this override the upstream g-tx-fifo-size of
+ * <128 128 16 16 16> only has two 128-dword slots, so the third bulk-IN
+ * fails with "No suitable fifo found" at SET_CONFIGURATION. Budget:
+ * 712 - 192 (rx) - 32 (np-tx) = 488 dwords available, 416 used.
+ */
+&dwc2 {
+	g-np-tx-fifo-size = <32>;
+	g-tx-fifo-size = <128 16 128 16 128>;
+};
+
 /*
  * Efuse: read-only OTP block accessed via the secure-monitor bridge.
  * meson-g12-common.dtsi already creates the node; we make it explicit

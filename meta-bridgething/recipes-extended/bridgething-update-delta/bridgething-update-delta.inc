@@ -45,9 +45,15 @@ BRIDGETHING_OTA_SOURCE_LINKNAME = "${BRIDGETHING_OTA_SOURCE_IMAGE}-${MACHINE}"
 
 # OTA offsets matching the stock AML MPT geometry. Both dev + prod
 # images share this layout - squashfs makes the lean shape enough
-# for the kitchen-sink dev install too.
+# for the kitchen-sink dev install too. dtbo_a / dtbo_b carry the
+# raw board DTB that u-boot loads at fdt_addr (boot.img's
+# second-stage DTB is ignored), so a kernel update without a
+# matching dtbo update would leave the new kernel parsing the old
+# DTB.
 SUPERBIRD_OTA_BOOT_A_OFFSET   = "0xd600000"
 SUPERBIRD_OTA_BOOT_B_OFFSET   = "0xee00000"
+SUPERBIRD_OTA_DTBO_A_OFFSET   = "0xac00000"
+SUPERBIRD_OTA_DTBO_B_OFFSET   = "0xb800000"
 SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
 SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 
@@ -74,7 +80,7 @@ SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://10.42.1.1:8000"
 # os.path.basename on SWUPDATE_IMAGES entries, so subdir-relative
 # paths cpio under the bare name.
 SWU_STAGEDIR = "${PN}-stage"
-SWUPDATE_IMAGES = "${SWU_STAGEDIR}/boot.img ${SWU_STAGEDIR}/system.img.zck.zckheader"
+SWUPDATE_IMAGES = "${SWU_STAGEDIR}/boot.img ${SWU_STAGEDIR}/dtb ${SWU_STAGEDIR}/system.img.zck.zckheader"
 
 # Must match the source image's SUPERBIRD_ROOTFS_TYPE. bbvars are
 # recipe-scoped so this can't inherit from the image; keep both
@@ -105,6 +111,8 @@ do_render_sw_description() {
         -e "s|@@VERSION@@|${SWU_VERSION}|g" \
         -e "s|@@BOOT_A_OFFSET@@|${SUPERBIRD_OTA_BOOT_A_OFFSET}|g" \
         -e "s|@@BOOT_B_OFFSET@@|${SUPERBIRD_OTA_BOOT_B_OFFSET}|g" \
+        -e "s|@@DTBO_A_OFFSET@@|${SUPERBIRD_OTA_DTBO_A_OFFSET}|g" \
+        -e "s|@@DTBO_B_OFFSET@@|${SUPERBIRD_OTA_DTBO_B_OFFSET}|g" \
         -e "s|@@SYSTEM_A_OFFSET@@|${SUPERBIRD_OTA_SYSTEM_A_OFFSET}|g" \
         -e "s|@@SYSTEM_B_OFFSET@@|${SUPERBIRD_OTA_SYSTEM_B_OFFSET}|g" \
         -e "s|@@SLOT_A_SOURCE@@|${SUPERBIRD_OTA_SLOT_A_SOURCE}|g" \
@@ -123,9 +131,11 @@ do_stage_swu_inputs() {
     set -eu
     stage="${DEPLOY_DIR_IMAGE}/${SWU_STAGEDIR}"
     mkdir -p "$stage"
-    rm -f "$stage/boot.img" "$stage/system.img.zck.zckheader"
+    rm -f "$stage/boot.img" "$stage/dtb" "$stage/system.img.zck.zckheader"
     ln -s "../${BRIDGETHING_OTA_SOURCE_LINKNAME}.boot.img" \
         "$stage/boot.img"
+    ln -s "../${BRIDGETHING_OTA_SOURCE_LINKNAME}.dtb" \
+        "$stage/dtb"
     ln -s "../${BRIDGETHING_OTA_SOURCE_LINKNAME}.${SUPERBIRD_ROOTFS_TYPE}.zck.zckheader" \
         "$stage/system.img.zck.zckheader"
 }

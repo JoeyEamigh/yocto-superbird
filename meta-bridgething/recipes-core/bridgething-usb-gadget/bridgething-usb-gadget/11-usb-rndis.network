@@ -2,7 +2,7 @@
 Name=urndis*
 
 [Network]
-Address=10.42.1.2/24
+Address=10.42.2.2/24
 DHCPServer=yes
 LinkLocalAddressing=no
 IPv6AcceptRA=no

@@ -1,12 +1,18 @@
 # Bridgething OTA update - A/B slot.
 #
-# Linux can't see boot_a / boot_b as block devices (they're in the
-# Amlogic MPT, not the MBR), so we write them via raw byte offsets
-# on /dev/mmcblk0. system_a / system_b ARE visible via the MBR
-# overlay as /dev/mmcblk0p1 / /dev/mmcblk0p2, but we keep the same
-# raw-offset shape for symmetry - and dev images need it because
+# Linux can't see boot_a / boot_b / dtbo_a / dtbo_b as block devices
+# (they're in the Amlogic MPT, not the MBR), so we write them via raw
+# byte offsets on /dev/mmcblk0. system_a / system_b ARE visible via
+# the MBR overlay as /dev/mmcblk0p1 / /dev/mmcblk0p2, but we keep the
+# same raw-offset shape for symmetry - and dev images need it because
 # their MBR system_a / system_b spans regions the AML MPT doesn't
 # describe at all.
+#
+# Three image entries per slot: boot.img (kernel), dtb (raw board
+# DTB written to dtbo_X - u-boot loads the DTB from dtbo_X at
+# fdt_addr, NOT from boot.img's second-stage, so a kernel update
+# without a matching dtbo update would leave the new kernel parsing
+# the old DTB), and system.img (rootfs).
 #
 # Offsets are filled in at build time from the
 # SUPERBIRD_OTA_*_OFFSET bbvars (see bridgething-update.bb), so
@@ -55,6 +61,13 @@ software =
                     installed-directly = true;
                 },
                 {
+                    filename = "dtb";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@DTBO_A_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
                     filename = "system.img";
                     type = "raw";
                     device = "/dev/mmcblk0";
@@ -73,6 +86,13 @@ software =
                     type = "raw";
                     device = "/dev/mmcblk0";
                     offset = "@@BOOT_B_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
+                    filename = "dtb";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@DTBO_B_OFFSET@@";
                     installed-directly = true;
                 },
                 {

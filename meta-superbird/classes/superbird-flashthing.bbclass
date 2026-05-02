@@ -126,17 +126,29 @@ python do_flashthing_zip () {
     ], check=True)
     shutil.copy(boot_a_path, os.path.join(stage, "boot_b.dump"))
 
-    # Deploy boot.img + system.img stable symlinks for swupdate's
-    # bbclass to pick up (it expects file names matching its
-    # sw-description "filename =" entries). system.img points at the
-    # rootfs file under whatever extension SUPERBIRD_ROOTFS_TYPE
-    # selected - keeps the OTA path filesystem-agnostic.
+    # Deploy boot.img + dtb + system.img stable symlinks for
+    # swupdate's bbclass to pick up (it expects file names matching
+    # its sw-description "filename =" entries). system.img points at
+    # the rootfs file under whatever extension SUPERBIRD_ROOTFS_TYPE
+    # selected - keeps the OTA path filesystem-agnostic. dtb is the
+    # raw board DTB so OTA can update dtbo_a / dtbo_b alongside
+    # boot_a / boot_b (u-boot loads the DTB from dtbo_X, not from
+    # boot.img's second-stage, so a kernel update without a matching
+    # dtbo update would leave the new kernel parsing the old DTB).
     boot_named = os.path.join(deploy, f"{image_name}.boot.img")
     boot_link  = os.path.join(deploy, f"{image_link_name}.boot.img")
     shutil.copy(boot_a_path, boot_named)
     if os.path.lexists(boot_link):
         os.unlink(boot_link)
     os.symlink(os.path.basename(boot_named), boot_link)
+
+    dtb_named = os.path.join(deploy, f"{image_name}.dtb")
+    dtb_link  = os.path.join(deploy, f"{image_link_name}.dtb")
+    shutil.copy(inputs['dtb'], dtb_named)
+    if os.path.lexists(dtb_link):
+        os.unlink(dtb_link)
+    os.symlink(os.path.basename(dtb_named), dtb_link)
+
     # Last-image-wins generic aliases. The dev OTA recipe
     # (bridgething-update.bb) consumes these directly. The prod
     # OTA recipe (bridgething-update-prod.bb) does NOT - it stages
@@ -146,6 +158,7 @@ python do_flashthing_zip () {
     # last-finished flashthing_zip wins these names.
     for stable, target in (
         ("boot.img",    os.path.basename(boot_link)),
+        ("dtb",         os.path.basename(dtb_link)),
         ("system.img",  f"{image_link_name}.{rootfs_ext}"),
     ):
         p = os.path.join(deploy, stable)

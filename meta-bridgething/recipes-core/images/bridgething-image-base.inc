@@ -33,12 +33,22 @@ IMAGE_INSTALL = " \
     packagegroup-bridgething-core \
 "
 
-# Block transitive RRECOMMENDS that drag in dead weight. Every driver
-# we use is built into vmlinuz (kernel cfg fragment), so kernel-modules
-# would just install ~MB of unreachable .ko shadows. udev-hwdb is
-# desktop bloat; wpa-supplicant + wireless-regdb assume wifi we don't
-# have.
+# Block transitive RRECOMMENDS that drag in dead weight. Most drivers
+# we use are built into vmlinuz (kernel cfg fragment); the few we keep
+# out are pulled in by name below. The kernel-modules meta-package
+# would otherwise drag in every .ko the upstream arm64 defconfig leaves
+# as =m (~hundreds of MiB of unrelated drivers). udev-hwdb is desktop
+# bloat; wpa-supplicant + wireless-regdb assume wifi we don't have.
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
+
+# Per-driver kernel module packages. Each pulls a specific .ko under
+# /lib/modules; udev autoloads on DT match. Items here are =m in the
+# kernel cfg fragment because linking them into vmlinuz pushes boot.img
+# past the 16 MiB boot_a partition cap.
+IMAGE_INSTALL += " \
+    kernel-module-meson-vdec \
+    kernel-module-ge2d \
+"
 
 # Stock AML MPT geometry — works for both prod and dev now that
 # squashfs makes the 516 MB slot enough for a kitchen-sink dev

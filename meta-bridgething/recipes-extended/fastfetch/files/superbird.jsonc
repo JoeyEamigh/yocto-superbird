@@ -3,7 +3,9 @@
   "logo": {
     "type": "file",
     "source": "/etc/fastfetch/ascii-logo.txt",
-    "color": "#81a1c1",
+    "color": {
+      "1": "#81a1c1",
+    },
   },
   "display": {
     "freq": {

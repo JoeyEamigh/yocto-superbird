@@ -13,9 +13,12 @@
 # the chained `raw` handler which writes to the inactive slot's
 # byte offset on /dev/mmcblk0.
 #
-# `boot.img` stays as a raw type - at 8 MB the kernel binary
-# shuffles too many bytes between releases for content-defined
-# chunking to win, and the transfer cost is fine.
+# `boot.img` and `dtb` (raw board DTB written to dtbo_X) stay as
+# raw types - at 16 MB and ~50 KB respectively, neither benefits
+# from content-defined chunking, and the transfer cost is fine.
+# u-boot loads the DTB from dtbo_X at fdt_addr (NOT from boot.img's
+# second-stage), so a kernel update without a matching dtbo update
+# would leave the new kernel parsing the old DTB.
 #
 # Selector: `swupdate -i .../prod.swu -e stable,slot_a` writes the
 # slot A partitions (target=p1, source=p2); `... slot_b` writes
@@ -60,6 +63,13 @@ software =
                     installed-directly = true;
                 },
                 {
+                    filename = "dtb";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@DTBO_A_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
                     filename = "system.img.zck.zckheader";
                     type = "delta";
                     device = "/dev/mmcblk0";
@@ -82,6 +92,13 @@ software =
                     type = "raw";
                     device = "/dev/mmcblk0";
                     offset = "@@BOOT_B_OFFSET@@";
+                    installed-directly = true;
+                },
+                {
+                    filename = "dtb";
+                    type = "raw";
+                    device = "/dev/mmcblk0";
+                    offset = "@@DTBO_B_OFFSET@@";
                     installed-directly = true;
                 },
                 {

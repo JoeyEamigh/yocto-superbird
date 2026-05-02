@@ -1,0 +1,2 @@
+# Presence of this file gates android-tools-adbd.service via
+# ConditionPathExists. Touch / remove to enable / disable adbd at boot.
