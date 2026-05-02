@@ -42,7 +42,7 @@ CARGO_BUILD_FLAGS:remove = "--frozen"
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
 # bluer pulls libdbus-sys, which links against libdbus-1 on the target.
-DEPENDS = "dbus"
+DEPENDS = "dbus swupdate systemd"
 
 # headless_chrome's transitive build dep auto_generate_cdp shells out to
 # rustfmt to pretty-print the generated CDP bindings. rust-native doesn't
