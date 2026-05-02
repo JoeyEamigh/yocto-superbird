@@ -11,7 +11,10 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 inherit cargo systemd pkgconfig
 
-SRC_URI = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
+# gitsm:// (not plain git://) so the swupdate-sys vendored submodule under
+# crates/swupdate-sys/vendor/swupdate gets fetched too - bindgen reads
+# its headers at build time. The submodule is shallow.
+SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething.service \
            file://bridgething.conf \
            file://bridgething-launch \
@@ -41,8 +44,19 @@ CARGO_BUILD_FLAGS:remove = "--frozen"
 # gone (--frozen also implied --offline, hence the :remove above).
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
-# bluer pulls libdbus-sys, which links against libdbus-1 on the target.
-DEPENDS = "dbus swupdate systemd"
+DEPENDS = "dbus swupdate systemd clang-native"
+
+# bindgen runs on the build host during `swupdate-sys`'s build.rs and
+# needs a host-runnable libclang. `clang-native` from meta-clang
+# stages it; `LIBCLANG_PATH` is what bindgen probes. `BINDGEN_EXTRA_CLANG_ARGS`
+# points clang at the cross sysroot so transitively-included system
+# headers (stdint, sys/socket, ...) parse against the target's glibc -
+# the alternative is clang chasing the host's headers and tripping on
+# `__float128` typedefs that only the x86 builtin set understands.
+# Paired with the `--target=$TARGET` clang_arg in `swupdate-sys/build.rs`
+# this gives a consistent target-triple view both sides of the bindgen run.
+export LIBCLANG_PATH = "${STAGING_LIBDIR_NATIVE}"
+export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
 
 # headless_chrome's transitive build dep auto_generate_cdp shells out to
 # rustfmt to pretty-print the generated CDP bindings. rust-native doesn't
@@ -54,7 +68,7 @@ export DO_NOT_FORMAT = "1"
 SYSTEMD_SERVICE:${PN} = "bridgething.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-RDEPENDS:${PN} += "bridgething-stock-webapp"
+RDEPENDS:${PN} += "bridgething-stock-webapp swupdate systemd"
 
 # Override cargo.bbclass's default cargo_do_install — that one drops every
 # workspace binary into /usr/bin. We want the real binary at /usr/libexec
