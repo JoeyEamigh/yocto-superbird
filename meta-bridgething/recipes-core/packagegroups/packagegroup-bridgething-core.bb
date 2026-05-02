@@ -19,6 +19,7 @@ RDEPENDS:${PN} = " \
     bridgething-init \
     bridgething-clock \
     bridgething-usb-gadget \
+    bridgething-mdns \
     bridgething-als \
     bridgething-cursor-suppress \
     bridgething-fbpaint \

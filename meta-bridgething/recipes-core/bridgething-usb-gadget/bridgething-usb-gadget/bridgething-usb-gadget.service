@@ -1,5 +1,5 @@
 [Unit]
-Description=Bridgething USB gadget (CDC-ECM/RNDIS) bring-up
+Description=Bridgething USB gadget (RNDIS + CDC-ECM multi-config) bring-up
 DefaultDependencies=no
 After=sys-kernel-config.mount local-fs.target systemd-modules-load.service
 Before=network-pre.target
