@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # bridgething-ota - delta-OTA iteration helper.
 #
-# Stands up superbird-delta-stub.py on the host side of the USB-gadget
-# link, scp's the .swu manifest to the device, then runs
-# `bridgething-ab apply` over SSH. swupdate writes the inactive slot
-# and the in-manifest bootenv block atomically flips active_slot;
-# bridgething-ab follows up with want_boot=kernel + the new slot's
-# try counter. Then we reboot. ~one-shot equivalent of a full flash
-# but skipping the burn-mode dance.
+# scp's the .swu manifest to the device, runs `bridgething-ab apply`
+# over SSH. swupdate writes the inactive slot and the in-manifest
+# bootenv block atomically flips active_slot; bridgething-ab follows
+# up with want_boot=kernel + the new slot's try counter. Then we
+# reboot. ~one-shot equivalent of a full flash but skipping the
+# burn-mode dance.
 #
 # The .swu's sw-description hardcodes the URL
-# `http://10.42.1.1:8000/system.img.zck` (rendered from
-# SUPERBIRD_OTA_DELTA_URL_BASE at build time). This script stages a
-# tmp dir with that filename symlinked to the real .zck artifact so
-# the URL resolves. Override --port if you've moved the bbvar.
+# `http://bridgething-host.local:8000/system.img.zck` (rendered from
+# SUPERBIRD_OTA_DELTA_URL_BASE at build time). For the device to
+# resolve that name and reach the bytes you need
+# `superbird-otahost` running on the host - it publishes the mDNS
+# alias and serves the .zck. By default this script spawns it for
+# the duration of the apply; pass --no-server to assume it's already
+# running (e.g. so daemon-path testing via `host-gateway push-update`
+# can share one stub).
 #
 # Defaults target bridgething-update-dev's artifacts (dev image, with
 # the dev packagegroup + persistent /opt overlay). Pass --image prod
@@ -70,37 +73,31 @@ HOST="${SUPERBIRD_HOST:-10.42.1.2}"
 SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
 ssh_dev() { ssh "${SSH_OPTS[@]}" "root@${HOST}" "$@"; }
 
-SERVE_DIR=""
-SERVER_PID=""
+OTAHOST_PID=""
 cleanup() {
-    if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
-        kill "$SERVER_PID" 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
-    fi
-    if [ -n "$SERVE_DIR" ] && [ -d "$SERVE_DIR" ]; then
-        rm -rf "$SERVE_DIR"
+    if [ -n "$OTAHOST_PID" ] && kill -0 "$OTAHOST_PID" 2>/dev/null; then
+        kill "$OTAHOST_PID" 2>/dev/null || true
+        wait "$OTAHOST_PID" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
 
 if [ "$WITH_SERVER" = "1" ]; then
     [ -f "$ZCK" ] || { echo "[ota] zck not found: $ZCK" >&2; exit 1; }
-    SERVE_DIR=$(mktemp -d -t bridgething-ota.XXXXXX)
-    ln -s "$(realpath "$ZCK")" "$SERVE_DIR/system.img.zck"
 
-    echo "[ota] serving $(basename "$ZCK") as system.img.zck on 10.42.1.1:$PORT"
-    "$SCRIPT_DIR/superbird-delta-stub.py" "$SERVE_DIR" --port "$PORT" &
-    SERVER_PID=$!
+    "$SCRIPT_DIR/superbird-otahost" --image "$IMAGE" --port "$PORT" --zck "$ZCK" \
+        > /tmp/superbird-otahost.log 2>&1 &
+    OTAHOST_PID=$!
 
-    # ThreadingHTTPServer binds in the constructor before serve_forever
-    # so the socket is listening as soon as the python process is alive.
-    # If bind fails (address in use, 10.42.1.1 not assigned) the
-    # process exits within milliseconds - check that here.
-    sleep 0.5
-    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-        echo "[ota] delta stub failed to start - is the USB-gadget link up?" >&2
+    # Wait for both subprocesses (mDNS + stub) to come up. The helper
+    # exits non-zero quickly if either fails to bind.
+    sleep 0.7
+    if ! kill -0 "$OTAHOST_PID" 2>/dev/null; then
+        echo "[ota] superbird-otahost failed to start - check /tmp/superbird-otahost.log" >&2
+        cat /tmp/superbird-otahost.log >&2 || true
         exit 1
     fi
+    echo "[ota] otahost up (pid $OTAHOST_PID); $(basename "$ZCK") on :$PORT"
 fi
 
 REMOTE_SWU="/tmp/$(basename "$SWU")"

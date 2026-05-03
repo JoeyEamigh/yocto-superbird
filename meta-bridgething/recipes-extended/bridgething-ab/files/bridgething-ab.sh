@@ -82,7 +82,16 @@ case "${1-}" in
         # streams (without the leading underscore).
         sel="slot${target}"
         echo "applying $swu into ${target} (selector: stable,${sel})"
-        if swupdate -i "$swu" -e "stable,${sel}"; then
+        # Drive the install via swupdate-client (IPC to the running
+        # swupdate.service), not `swupdate -i` (standalone). The daemon's
+        # `--accepted-select stable,slot_X` allowlist is what validates
+        # the selector for IPC clients, and a standalone `swupdate -i`
+        # calls unlink_sockets on exit, which clobbers the
+        # /tmp/sockinstctrl + /tmp/swupdateprog filesystem entries that
+        # swupdate.socket holds for the bridgething daemon's libswupdate
+        # FFI. Going through the daemon keeps both apply paths sharing
+        # one swupdate process and one set of sockets.
+        if swupdate-client -e "stable,${sel}" "$swu"; then
             echo "swupdate succeeded - slot flipped via bootenv to ${target}"
             # active_slot is set inside swupdate's bootenv block on
             # successful install (atomic with the partition writes).

@@ -195,18 +195,21 @@ push-webapp local name="":
 cdp port="9223":
   scripts/bridgething-cdp {{port}}
 
-# Stub HTTP server that serves the prod delta-OTA chunk file
-# (system.ext2.zck) on http://10.42.1.1:8000 - what the on-device
-# delta handler fetches when bridgething daemon's bridge isn't up.
-delta-stub:
-  scripts/superbird-delta-stub.py
+# Host-side OTA infra: publishes the mDNS alias
+# `bridgething-host.local` for the host's gadget-link IP and serves
+# the .zck artifact on :8000. The .swu's delta handler URL points at
+# this hostname, so both `just ota` (bridgething-ab) and
+# `host-gateway push-update` (daemon path) need it running.
+# Foreground; ctrl-C to stop. Pass `--image prod` for the prod zck.
+otahost *args:
+  scripts/superbird-otahost {{args}}
 
-# Delta-OTA from a booted device. Spawns the host delta-stub HTTP
-# server, scp's the .swu manifest, runs swupdate via bridgething-ab
-# apply (which writes the inactive slot + atomically flips
-# active_slot via the manifest's bootenv block), then reboots.
-# Defaults to the dev image (bridgething-update-dev). Pass --image
-# prod for the prod variant. Skips the burn-mode-then-flashthing
-# loop so iteration is way faster than `just flash`.
+# Delta-OTA from a booted device. Spawns superbird-otahost, scp's
+# the .swu manifest, runs swupdate via bridgething-ab apply (which
+# writes the inactive slot + atomically flips active_slot via the
+# manifest's bootenv block), then reboots. Defaults to the dev image
+# (bridgething-update-dev). Pass --image prod for the prod variant.
+# Skips the burn-mode-then-flashthing loop so iteration is way
+# faster than `just flash`.
 ota *args:
   scripts/bridgething-ota {{args}}

@@ -13,7 +13,7 @@ SRC_URI = " \
 "
 S = "${UNPACKDIR}"
 
-RDEPENDS:${PN} = "swupdate libubootenv-bin"
+RDEPENDS:${PN} = "swupdate swupdate-client libubootenv-bin"
 
 inherit systemd
 

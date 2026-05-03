@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# superbird-otahost - host-side OTA helper.
+#
+# The .swu's delta handler URL is
+# `http://bridgething-host.local:8000/system.img.zck`. This script
+# stands up the two prerequisites the URL needs to resolve from the
+# device:
+#   1. mDNS alias `bridgething-host.local` -> host's gadget-link IP,
+#      via `avahi-publish-address`. nss-mdns on the device resolves
+#      it; resolution goes out the CDC-ECM iface (10.42.1.0/24).
+#   2. HTTP-Range stub serving the .zck on :8000, via
+#      superbird-delta-stub.py bound to 0.0.0.0.
+#
+# Foreground process; ctrl-C tears both down. Required for both
+# `bridgething-ota` (drives bridgething-ab apply over SSH) and
+# `host-gateway push-update` (drives the daemon's OTA orchestrator).
+#
+# Usage:
+#   superbird-otahost [--zck PATH] [--port PORT] [--image dev|prod]
+#
+# Env:
+#   SUPERBIRD_HOST   device IP for prefsrc detection (default 10.42.1.2)
+#   SUPERBIRD_OTA_PORT   (default 8000)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="$SCRIPT_DIR/../build/tmp/deploy/images/superbird"
+
+IMAGE=dev
+ZCK=""
+PORT="${SUPERBIRD_OTA_PORT:-8000}"
+HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
+    exit 2
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --image)  IMAGE="$2"; shift 2 ;;
+        --zck)    ZCK="$2"; shift 2 ;;
+        --port)   PORT="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+done
+
+case "$IMAGE" in
+    dev|prod) ;;
+    *) echo "[otahost] --image must be 'dev' or 'prod', got: $IMAGE" >&2; exit 2 ;;
+esac
+
+: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-zst.zck}"
+[ -f "$ZCK" ] || { echo "[otahost] zck not found: $ZCK" >&2; exit 1; }
+
+# Source IP the host uses to reach the device. ECM iface is in
+# 10.42.1.0/24 so this picks the host's lease (or 10.42.1.1 if the
+# legacy superbird-usb NM profile is still around).
+HOST_IP=$(ip -j route get "$HOST" 2>/dev/null | jq -r '.[0].prefsrc' 2>/dev/null || true)
+[ -n "$HOST_IP" ] || { echo "[otahost] couldn't determine host IP for $HOST" >&2; exit 1; }
+
+command -v avahi-publish-address >/dev/null \
+    || { echo "[otahost] avahi-publish-address missing - install avahi" >&2; exit 1; }
+
+SERVE_DIR=$(mktemp -d -t superbird-otahost.XXXXXX)
+ln -s "$(realpath "$ZCK")" "$SERVE_DIR/system.img.zck"
+
+cleanup() {
+    [ -n "${MDNS_PID:-}" ] && kill "$MDNS_PID" 2>/dev/null || true
+    [ -n "${STUB_PID:-}" ] && kill "$STUB_PID" 2>/dev/null || true
+    rm -rf "$SERVE_DIR"
+}
+trap cleanup EXIT INT TERM
+
+# `-R` re-publishes if the daemon restarts. Background, in foreground
+# we wait on both children.
+avahi-publish-address -R bridgething-host.local "$HOST_IP" >/dev/null 2>&1 &
+MDNS_PID=$!
+
+"$SCRIPT_DIR/superbird-delta-stub.py" "$SERVE_DIR" --addr 0.0.0.0 --port "$PORT" &
+STUB_PID=$!
+
+# Both children should be up almost immediately; bail if either dies.
+sleep 0.5
+if ! kill -0 "$MDNS_PID" 2>/dev/null; then
+    echo "[otahost] avahi-publish-address exited - is avahi-daemon running?" >&2
+    exit 1
+fi
+if ! kill -0 "$STUB_PID" 2>/dev/null; then
+    echo "[otahost] delta stub exited - bind failure?" >&2
+    exit 1
+fi
+
+echo "[otahost] mDNS bridgething-host.local -> $HOST_IP"
+echo "[otahost] serving $(basename "$ZCK") on :$PORT (any iface)"
+echo "[otahost] ready. ctrl-C to stop."
+
+wait

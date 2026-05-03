@@ -20,12 +20,13 @@ reassembles, then hands the full image to the raw handler at the \
 inactive slot's offset. The system.img blob is filesystem-agnostic - \
 it follows SUPERBIRD_ROOTFS_TYPE (squashfs-zst on prod). \
 \
-The url= property points at http://127.0.0.1:NNN by default - the \
-on-device bridgething daemon stands up a localhost HTTP-Range \
-listener and bridges chunk requests over its existing RFCOMM \
-transport to the gateway phone (which holds the .zck cache). For \
-benchtop testing without the daemon, override SUPERBIRD_OTA_DELTA_URL_BASE \
-to a host-side stub like http://10.42.1.1:8000."
+The url= property points at http://bridgething-host.local:8000/ - an \
+mDNS hostname the host side advertises (via avahi-publish-address \
+inside scripts/superbird-otahost) for whichever IP it has on the \
+gadget link. Resolution lands on the host's CDC-ECM iface; the host \
+serves the .zck through superbird-delta-stub.py on :8000. The \
+mDNS approach lets us drop the static-IP host config that the \
+prior http://10.42.1.1:8000/ default required."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -63,13 +64,18 @@ SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 SUPERBIRD_OTA_SLOT_A_SOURCE = "/dev/mmcblk0p2"
 SUPERBIRD_OTA_SLOT_B_SOURCE = "/dev/mmcblk0p1"
 
-# Where the device fetches the full .zck from. Default points at
-# the host side of the USB-gadget link so benchtop iteration with
-# `superbird-delta-stub.py` works out of the box. Will flip to a
-# localhost target (the bridgething daemon's HTTP-Range bridge,
-# which forwards over RFCOMM to the gateway phone) once the daemon
-# side is in place and we know the shape of the URL contract.
-SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://10.42.1.1:8000"
+# Where the device fetches the full .zck from. The mDNS hostname
+# `bridgething-host.local` is advertised by `scripts/superbird-otahost`
+# on the host side (avahi-publish-address against the host's
+# gadget-link IP, which DHCP picks at runtime). Resolution on the
+# device goes through nss-mdns + the on-device avahi-daemon. This
+# replaces the static `http://10.42.1.1:8000/` default that needed
+# a manual NM profile pinning that IP to the CDC-ECM iface.
+#
+# Will flip to `http://127.0.0.1:NNN` once the daemon's HTTP-Range
+# bridge (which forwards chunk requests over RFCOMM to the gateway
+# phone) is in place and we know the URL contract.
+SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://bridgething-host.local:8000"
 
 # Per-recipe staging subdir in DEPLOY_DIR_IMAGE. Lets us use the
 # bare cpio-entry names (`boot.img`, `system.img.zck.zckheader`)
