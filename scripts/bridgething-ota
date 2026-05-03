@@ -65,7 +65,7 @@ case "$IMAGE" in
 esac
 
 : "${SWU:=$DEPLOY_DIR/bridgething-update-${IMAGE}-superbird.swu}"
-: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-zst.zck}"
+: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-lz4.zck}"
 
 [ -f "$SWU" ] || { echo "[ota] swu not found: $SWU" >&2; exit 1; }
 

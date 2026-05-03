@@ -1,7 +1,7 @@
 /*
- * bridgething-cursor-suppress - weston module that prevents the pointer
- * cursor sprite from rendering, regardless of what wl_pointer.set_cursor
- * surface a client provides.
+ * bridgething-cursor-suppress - weston module that keeps the pointer
+ * cursor sprite invisible on the panel, regardless of what
+ * wl_pointer.set_cursor surface a client provides.
  *
  * The Car Thing's only pointer-class input is the kernel rotary-encoder
  * device, which emits EV_REL/REL_HWHEEL on each detent. libinput exposes
@@ -13,22 +13,24 @@
  * cursor-theme=blank in weston.ini does not help because chromium
  * provides its own cursor bitmap rather than naming a theme cursor.
  *
- * This module hooks every weston_output's frame_signal. After each
- * frame, it walks every seat's pointer and forces the sprite view's
- * alpha to 0. The view stays mapped and in compositor->cursor_layer,
- * so libweston's internal bookkeeping is undisturbed; the renderer
- * just paints zero pixels for it, and the drm-backend's plane
- * assigner refuses to commit a non-1.0 alpha view to a HW cursor
- * plane (which forces fallback to GL composition where alpha=0
- * means "draw nothing"). Net effect: rotary scroll flows through
- * libinput and weston as a real wl_pointer.axis stream, but no cursor
- * pixel ever reaches the screen.
+ * The bridgething-local libweston patch in pointer_set_cursor sets
+ * pointer->sprite alpha to 0 the moment a sprite is created, so the
+ * default state on this image is "cursor invisible" with no first-frame
+ * flash. This module's job is therefore the inverse of what it used to
+ * be: when a remote-viewer seat is present (weston-vnc creates a
+ * per-client seat named "VNC Client" - see backend-vnc), raise the
+ * sprite alpha back to 1.0 every frame so the remote operator can see
+ * a cursor to aim with. When no such seat exists, hold alpha at 0.0
+ * so neither the panel nor any local-only renderer paints cursor
+ * pixels. The dev image is the only image that loads vnc-backend.so,
+ * so the raise-alpha branch is dead code on prod.
  *
- * Earlier versions of this module called weston_view_unmap() on the
- * sprite. That mutates the scene graph (removes the view from the
- * cursor layer's entry list) and is unsafe to do from a frame_signal
- * listener, which fires during the output paint cycle. Setting alpha
- * is a per-view scalar write, safe to do anytime.
+ * The module hooks every weston_output's frame_signal and walks every
+ * seat's pointer once per paint. Setting view alpha is a per-view
+ * scalar write and is safe to do from inside a frame_signal listener;
+ * an earlier version of this module called weston_view_unmap() from
+ * the same hook and that was not safe (mutates compositor->cursor_layer
+ * mid-iteration during the output paint cycle).
  *
  * frame_signal data quirk: in libweston-15, output->frame_signal is
  * emitted by the renderer with the damage region (pixman_region32_t *)
@@ -39,15 +41,6 @@
  * Treating data as a weston_output * crashes on the first paint when
  * the offset-104 deref ([damage+104]) loads garbage and then tries
  * to walk it as compositor->seat_list.
- *
- * VNC-aware bypass: weston's vnc-backend creates a per-client seat
- * named "VNC Client" (libweston/backend-vnc/vnc.c:767). When at
- * least one such seat exists, suppression is skipped for the frame -
- * the cursor stays visible on the panel for that frame too, but
- * remote vnc operators get a real cursor to aim with. Once the VNC
- * client disconnects and its seat is destroyed, normal suppression
- * resumes. The dev image is the only image that loads vnc-backend.so
- * so this branch is dead code on prod.
  *
  * Loaded via [core] modules=bridgething-cursor-suppress.so in
  * weston.ini. Cleanup on compositor destroy walks and frees its
@@ -89,18 +82,16 @@ any_vnc_seat_present(struct weston_compositor *compositor)
 }
 
 static void
-hide_pointer_sprites(struct weston_compositor *compositor)
+update_pointer_sprites(struct weston_compositor *compositor)
 {
 	struct weston_seat *seat;
-
-	if (any_vnc_seat_present(compositor))
-		return;
+	float alpha = any_vnc_seat_present(compositor) ? 1.0f : 0.0f;
 
 	wl_list_for_each(seat, &compositor->seat_list, link) {
 		struct weston_pointer *pointer =
 			weston_seat_get_pointer(seat);
 		if (pointer && pointer->sprite)
-			weston_view_set_alpha(pointer->sprite, 0.0f);
+			weston_view_set_alpha(pointer->sprite, alpha);
 	}
 }
 
@@ -108,7 +99,7 @@ static void
 on_output_frame(struct wl_listener *listener, void *data)
 {
 	struct cs_output *co = wl_container_of(listener, co, frame);
-	hide_pointer_sprites(co->output->compositor);
+	update_pointer_sprites(co->output->compositor);
 }
 
 static void

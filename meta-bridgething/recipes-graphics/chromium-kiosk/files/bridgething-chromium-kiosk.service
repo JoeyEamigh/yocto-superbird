@@ -21,6 +21,29 @@ Environment=WAYLAND_DISPLAY=wayland-1
 # kills every code path a cursor could be drawn through.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_PATH=/usr/share/icons
+# Block chromium from setting nice < 0 on its UI / IO / GPU threads.
+# Chromium calls setpriority(-8) internally on those threads to win
+# scheduler attention against other browser tabs and OS background
+# work. On a 4x A53 SoC running everything else also at nice=0, those
+# -8 threads preempt kswapd and the squashfs-percpu decompression
+# workers - the very kernel work chromium needs to make progress on
+# its own faults. Stripping CAP_SYS_NICE makes setpriority(-N) return
+# EPERM (we run as root, so the rlimit alone wouldn't bite); LimitNICE
+# is the explicit floor; NoNewPrivileges keeps the boundary across
+# any future setuid helpers chromium might exec. With all three the
+# UI / IO / GPU threads stay at nice=0 alongside everything else.
+CapabilityBoundingSet=~CAP_SYS_NICE
+AmbientCapabilities=
+LimitNICE=20
+NoNewPrivileges=yes
+# Persistent --user-data-dir on the data partition. systemd creates
+# /var/cache/bridgething/chromium with this owner/mode on first boot
+# (mode default 0755) and re-asserts perms on every start. Survives
+# reboot, OTA, and bootslot swap (data is shared between system_a /
+# system_b). Caches V8 bytecode + JIT artifacts (Code Cache/) and
+# the HTTP disk cache (Cache/) so first-load-after-boot stops being
+# the slow case.
+CacheDirectory=bridgething/chromium
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -S /run/weston/wayland-1 ] && exit 0; sleep 0.5; done; exit 1'
 ExecStart=/usr/bin/bridgething-chromium-launch
 Restart=on-failure

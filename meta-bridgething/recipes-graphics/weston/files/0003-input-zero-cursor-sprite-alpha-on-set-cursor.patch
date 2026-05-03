@@ -1,0 +1,41 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] input: zero cursor sprite alpha on pointer_set_cursor
+
+The bridgething image is a kiosk that exposes a rotary scroll wheel as
+a wl_pointer (REL_HWHEEL -> wl_pointer.axis), which causes chromium to
+call wl_pointer.set_cursor with its own bitmap. The end result we want
+on the panel is no visible cursor at all; we get there today by
+alpha-zeroing pointer->sprite from a frame_signal listener in an
+out-of-tree weston module.
+
+That listener runs after the renderer has already painted one frame
+with the freshly-created sprite at the default alpha=1.0, so on the
+very first set_cursor for any given client there is a one-frame flash
+of cursor pixels before suppression catches up. On a 60 Hz panel that
+flash is ~16 ms - small but visibly distracting on every focus enter
+that follows a tap or other focus-establishing event.
+
+Set sprite alpha to 0.0f the moment the sprite is (re)created. Renderer
+draws zero pixels for the sprite on the very first frame, no race. The
+out-of-tree frame_signal listener is responsible for raising alpha back
+to 1.0 if and when a remote-viewer seat (e.g. weston-vnc's per-peer
+"VNC Client") is present on the compositor and the panel's behaviour
+should track the remote's expectation of a visible cursor.
+
+Upstream-Status: Inappropriate [downstream policy]
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+ libweston/input.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/libweston/input.c b/libweston/input.c
+--- a/libweston/input.c
++++ b/libweston/input.c
+@@ -3593,6 +3593,7 @@ pointer_set_cursor(struct wl_client *client, struct wl_resource *resource,
+ 		weston_surface_set_label_func(surface,
+ 					    pointer_cursor_surface_get_label);
+ 		pointer->sprite = weston_view_create(surface);
++		weston_view_set_alpha(pointer->sprite, 0.0f);
+ 	}
+
+ 	pointer->hotspot = weston_coord_surface(x, y, surface);

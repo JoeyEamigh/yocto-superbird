@@ -1,8 +1,8 @@
 # Shared machinery for the zchunk-delta OTA .swu recipes.
 # Wrappers (bridgething-update-prod.bb, bridgething-update-dev.bb)
 # pin BRIDGETHING_OTA_SOURCE_IMAGE to the image their .swu deltas
-# against. The source image must emit `squashfs-zst.zck` +
-# `squashfs-zst.zck.zckheader` (IMAGE_FSTYPES += "..." +
+# against. The source image must emit `squashfs-lz4.zck` +
+# `squashfs-lz4.zck.zckheader` (IMAGE_FSTYPES += "..." +
 # IMAGE_CLASSES += "image_types_zchunk").
 #
 # Output: <PN>-${MACHINE}.swu, packing boot.img verbatim (raw
@@ -11,6 +11,12 @@
 # slot, fetches missing chunks via HTTP from SUPERBIRD_OTA_DELTA_URL_BASE,
 # reassembles, then writes to the inactive slot's byte offset on
 # /dev/mmcblk0.
+#
+# zchunk slices each compressed block independently, so the delta
+# overhead stays roughly proportional to the diff regardless of the
+# rootfs compression algorithm. lz4-hc compresses a bit less densely
+# than zstd-22, so the .zck transfer will be modestly larger - the
+# tradeoff is faster on-device fault-in once installed.
 
 DESCRIPTION = "Generates a swupdate .swu archive that ships boot.img \
 verbatim (raw handler) and system.img as a zchunk delta header \
@@ -18,7 +24,7 @@ verbatim (raw handler) and system.img as a zchunk delta header \
 the currently-mounted slot, fetches missing chunks via HTTP, \
 reassembles, then hands the full image to the raw handler at the \
 inactive slot's offset. The system.img blob is filesystem-agnostic - \
-it follows SUPERBIRD_ROOTFS_TYPE (squashfs-zst on prod). \
+it follows SUPERBIRD_ROOTFS_TYPE (squashfs-lz4 on prod). \
 \
 The url= property points at http://bridgething-host.local:8000/ - an \
 mDNS hostname the host side advertises (via avahi-publish-address \
@@ -90,8 +96,8 @@ SWUPDATE_IMAGES = "${SWU_STAGEDIR}/boot.img ${SWU_STAGEDIR}/dtb ${SWU_STAGEDIR}/
 
 # Must match the source image's SUPERBIRD_ROOTFS_TYPE. bbvars are
 # recipe-scoped so this can't inherit from the image; keep both
-# pinned to squashfs-zst.
-SUPERBIRD_ROOTFS_TYPE = "squashfs-zst"
+# pinned to squashfs-lz4.
+SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
 
 # No signing for v1. Bridgething's gateway transport is the only
 # delivery channel and runs over an authenticated bluetooth pair.

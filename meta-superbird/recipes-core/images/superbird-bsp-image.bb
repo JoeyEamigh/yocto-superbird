@@ -44,7 +44,7 @@ SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
 SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
 
-SUPERBIRD_ROOTFS_TYPE = "squashfs-zst"
-EXTRA_IMAGECMD:squashfs-zst = "-b 1M -no-xattrs -all-root -Xcompression-level 22"
+SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
+EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
 
-IMAGE_FSTYPES = "squashfs-zst"
+IMAGE_FSTYPES = "squashfs-lz4"

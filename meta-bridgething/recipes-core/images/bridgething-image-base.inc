@@ -1,5 +1,5 @@
 # Shared image base for bridgething prod + dev variants. Lives at
-# IMAGE_FSTYPES = squashfs-zst with stock AML MPT partition geometry,
+# IMAGE_FSTYPES = squashfs-lz4 with stock AML MPT partition geometry,
 # so dev + prod produce byte-identical layouts. The only differences
 # the per-variant recipes layer on top are install-set extras (cog,
 # chromedriver, dev tools), the weston shell choice (-kiosk vs
@@ -59,21 +59,28 @@ SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
 SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
 
-# Squashfs as the rootfs. zstd compression at level 22 (max) trades
-# build time for runtime size — paid once, saves bytes forever.
-# -b 1M = 1 MiB squashfs blocks; good locality for chromium-bin's
-# mmap'd random-access reads. -no-xattrs skips the xattr table
-# (we don't ship SELinux/POSIX-ACL labels). -all-root squashes
-# permissions to root:root since the rootfs is single-user anyway.
-SUPERBIRD_ROOTFS_TYPE = "squashfs-zst"
-EXTRA_IMAGECMD:squashfs-zst = "-b 1M -no-xattrs -all-root -Xcompression-level 22"
+# Squashfs as the rootfs, lz4 compression with the HC encoder. lz4
+# decompresses at ~1.5-2 GB/s on Cortex-A53 - 3-4x faster than zstd
+# at any level - which is what dominates user-perceived stalls under
+# memory pressure: every code page evicted from the file cache costs
+# a squashfs fault-in. -Xhc enables high-compression mode for the
+# encoder; the resulting stream uses the same wire format as plain
+# lz4 so the kernel decompressor needs no special handling, and
+# decompress speed is identical (only the encoder works harder for
+# better ratio). -b 1M = 1 MiB squashfs blocks; good locality for
+# chromium-bin's mmap'd random-access reads. -no-xattrs skips the
+# xattr table (we don't ship SELinux/POSIX-ACL labels). -all-root
+# squashes permissions to root:root since the rootfs is single-user
+# anyway.
+SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
+EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
 
 # Drop the distro-default ext4 + tar.bz2. Both images get zchunk
 # derivatives so bridgething-update-{dev,prod}.bb can each build a
 # delta .swu against their respective image. meta-swupdate's
 # image_types_zchunk class adds CONVERSIONTYPES `zck` and
-# `zckheader`; Yocto walks the dotted chain (squashfs-zst ->
-# squashfs-zst.zck -> squashfs-zst.zck.zckheader) and keeps each
+# `zckheader`; Yocto walks the dotted chain (squashfs-lz4 ->
+# squashfs-lz4.zck -> squashfs-lz4.zck.zckheader) and keeps each
 # intermediate.
-IMAGE_FSTYPES = "squashfs-zst squashfs-zst.zck squashfs-zst.zck.zckheader"
+IMAGE_FSTYPES = "squashfs-lz4 squashfs-lz4.zck squashfs-lz4.zck.zckheader"
 IMAGE_CLASSES += "image_types_zchunk"

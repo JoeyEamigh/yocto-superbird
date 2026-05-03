@@ -52,7 +52,7 @@ case "$IMAGE" in
     *) echo "[otahost] --image must be 'dev' or 'prod', got: $IMAGE" >&2; exit 2 ;;
 esac
 
-: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-zst.zck}"
+: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-lz4.zck}"
 [ -f "$ZCK" ] || { echo "[otahost] zck not found: $ZCK" >&2; exit 1; }
 
 # Source IP the host uses to reach the device. ECM iface is in

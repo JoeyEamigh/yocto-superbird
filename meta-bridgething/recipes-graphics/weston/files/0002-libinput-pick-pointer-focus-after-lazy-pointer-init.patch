@@ -1,0 +1,45 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] libinput-device: pick pointer focus after lazy pointer init
+
+ensure_pointer_capability() lazily creates a seat's wl_pointer state on
+the first pointer-class libinput event from a CAP_POINTER device. After
+weston_seat_init_pointer() returns, pointer->focus is NULL and stays
+that way until something triggers default_grab_pointer_focus - which
+runs only on motion, grab change, button release, or an explicit
+weston_pointer_set_focus() call.
+
+For a wheel-only device that only emits REL_HWHEEL (no motion, no
+buttons), no such trigger ever fires. weston_pointer_send_axis() then
+early-returns at !weston_pointer_has_focus_resource(), so axis events
+are silently dropped despite the client having bound wl_pointer and the
+pointer position lying inside its surface. The user-visible symptom is
+a scroll wheel that does nothing until an unrelated input (a touch tap,
+say) happens to nudge focus.
+
+device_added() in libinput-seat.c does call weston_seat_repick() at
+device-add time, but that's too early: the pointer state hasn't been
+created yet (init is gated on the first event from a CAP_POINTER
+device, not on device-add), so the repick is a no-op against a NULL
+pointer.
+
+Re-pick immediately after weston_seat_init_pointer() so the just-created
+pointer's focus is set to whatever view sits at its initial position
+before any axis/motion event leaves notify_axis().
+
+Upstream-Status: Inappropriate [downstream policy]
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+ libweston/libinput-device.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/libweston/libinput-device.c b/libweston/libinput-device.c
+--- a/libweston/libinput-device.c
++++ b/libweston/libinput-device.c
+@@ -83,6 +83,7 @@ ensure_pointer_capability(struct libinput_device *libinput_device)
+
+ 	if (!(device->seat_caps & EVDEV_SEAT_POINTER)) {
+ 		weston_seat_init_pointer(seat);
++		weston_seat_repick(seat);
+ 		device->seat_caps |= EVDEV_SEAT_POINTER;
+ 	}
+ }

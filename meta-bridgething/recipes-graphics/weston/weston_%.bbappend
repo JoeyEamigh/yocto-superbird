@@ -48,6 +48,23 @@ SRC_URI:append = " file://weston-remote-access.pam"
 # pam_permit on the dev image) is the sole gate.
 SRC_URI:append = " file://0001-backend-vnc-skip-getpwnam-guard-in-vnc_handle_auth.patch"
 
+# weston_seat_init_pointer() is called lazily on the first pointer-class
+# libinput event, after which pointer->focus is NULL until something
+# triggers a focus pick. A REL_HWHEEL-only rotary encoder never emits
+# motion, so no pick ever fires under stock weston, and wl_pointer.axis
+# events are dropped at the focus-resource gate in
+# weston_pointer_send_axis. Force a repick at lazy-init time.
+SRC_URI:append = " file://0002-libinput-pick-pointer-focus-after-lazy-pointer-init.patch"
+
+# Cursor sprites are created at the default alpha=1.0 inside
+# pointer_set_cursor, so the first frame after any client's first
+# wl_pointer.set_cursor flashes the cursor on screen before the
+# bridgething-cursor-suppress module's frame_signal listener can
+# alpha-zero it. Set alpha=0 the moment the sprite is created. The
+# module raises alpha back to 1.0 when a remote-viewer seat (VNC) is
+# present.
+SRC_URI:append = " file://0003-input-zero-cursor-sprite-alpha-on-set-cursor.patch"
+
 do_install:append() {
     install -m 0644 ${UNPACKDIR}/weston-remote-access.pam \
         ${D}${sysconfdir}/pam.d/weston-remote-access
