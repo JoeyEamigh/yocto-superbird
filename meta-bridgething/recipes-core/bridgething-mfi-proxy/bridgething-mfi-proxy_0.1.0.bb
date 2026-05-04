@@ -2,9 +2,11 @@ SUMMARY = "Bridgething MFi auth-chip dev proxy"
 DESCRIPTION = "Tiny TCP server that exposes /dev/i2c-3 (the MFi \
 authentication coprocessor bus) over the network so the dev host can \
 drive the chip from `cargo test` against bridgething-mfi's `RemoteI2c` \
-transport. Conflicts with bridgething.service and bridgething-als.service \
-because the chip is single-resource and ALS reads adjacent i2c registers. \
-Dev image only - this is a dev iteration tool, not a production component."
+transport. Conflicts with bridgething.service (which owns /dev/i2c-3 \
+during iAP2 auth + the backlight via the in-daemon ALS manager) and \
+with bridgething-als.service (legacy fallback, disabled by default) \
+since this proxy briefly blanks the backlight. Dev image only - this \
+is a dev iteration tool, not a production component."
 HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"

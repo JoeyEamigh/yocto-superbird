@@ -1,5 +1,5 @@
 [Unit]
-Description=Superbird first-boot init (efuse → /etc/superbird, BT alias seed)
+Description=Superbird first-boot init
 DefaultDependencies=no
 After=local-fs.target
 Before=sysinit.target bluetooth.service superbird-bluetooth.service

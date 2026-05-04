@@ -1,8 +1,9 @@
 [Unit]
-Description=Bridgething daemon (websocket + bluetooth bridge to gateways)
+Description=Bridgething daemon
 After=network.target bluetooth.service bridgething-init.service
 Wants=bluetooth.service
 Before=bridgething-chromium-kiosk.service
+Conflicts=bridgething-als.service
 
 [Service]
 Type=notify
@@ -13,9 +14,6 @@ RestartSec=2
 TimeoutStartSec=30
 NotifyAccess=main
 WatchdogSec=0
-
-# Daemon is a foreground process - shut down cleanly via SIGTERM and let it
-# drain in-flight WS sessions + bluetooth handles.
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=15

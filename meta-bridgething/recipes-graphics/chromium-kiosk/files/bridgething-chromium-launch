@@ -4,9 +4,7 @@
 # Sourced env file at /etc/default/bridgething-kiosk lets sysadmins
 # (or, more commonly, this dev) override BRIDGETHING_KIOSK_URL and
 # BRIDGETHING_KIOSK_EXTRA without rebuilding the image. Default URL is
-# the bridgething daemon's modern HTTP/WS listen on port 8891 - the
-# daemon serves the active webapp at / and proxies on-demand assets via
-# the /_gateway/ namespace.
+# the bridgething daemon's modern HTTP/WS listen on port 8891.
 #
 # CDP is unconditionally on at 9223. chromium ≥ M111 silently ignores
 # --remote-debugging-address=<non-localhost> (Google removed the bind-
@@ -57,8 +55,7 @@
 #      complexity - those become no-ops under single-process.
 #
 # --num-raster-threads=4 lets the raster thread pool fill all four
-# A53 cores. The chromium default for low-memory devices is 2, which
-# left two cores idle while raster was the bottleneck.
+# A53 cores. The chromium default for low-memory devices is 2.
 #
 # --enable-low-end-device-mode is INTENTIONALLY OMITTED. It would
 # disable GPU rasterization (forcing CPU raster, slower) and put V8

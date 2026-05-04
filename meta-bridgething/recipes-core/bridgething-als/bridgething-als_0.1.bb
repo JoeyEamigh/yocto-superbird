@@ -1,8 +1,13 @@
-SUMMARY = "TMD2772 ambient light → pwm-backlight bridge"
+SUMMARY = "TMD2772 ambient light → pwm-backlight bridge (legacy fallback)"
 DESCRIPTION = "Tiny C daemon that polls the TMD2772 clear-photodiode \
 raw count from IIO and adjusts /sys/class/backlight/backlight/brightness \
-on a log curve. Replaces what GNOME's iio-sensor-proxy + a brightness \
-daemon would do, but in 100 lines of C with no DBus."
+on a log curve. The bridgething daemon now owns the backlight policy \
+in-process (core::als::AlsManager); this binary stays in the rootfs \
+as an installed-but-disabled fallback for `bridgething-mfi-proxy` \
+sessions and ad-hoc bringup. Enable manually with \
+`systemctl enable bridgething-als` if running without bridgething.service \
+(e.g. on a base image where the Rust daemon is not started). Otherwise \
+the two would fight for the same /sys/class/backlight node."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -16,7 +21,9 @@ S = "${UNPACKDIR}"
 inherit systemd
 
 SYSTEMD_SERVICE:${PN} = "bridgething-als.service"
-SYSTEMD_AUTO_ENABLE:${PN} = "enable"
+# Disabled by default: bridgething.service owns the backlight via the
+# in-daemon ALS manager.
+SYSTEMD_AUTO_ENABLE:${PN} = "disable"
 
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} -o bridgething-als ${S}/bridgething-als.c -lm

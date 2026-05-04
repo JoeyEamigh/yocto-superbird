@@ -27,7 +27,7 @@ do_compile() {
     install -d ${BUN_HOME}
     export HOME=${BUN_HOME}
 
-    # --frozen-lockfile pins to the committed bun.lockb; SRCREV pins the
+    # --frozen-lockfile pins to the committed bun.lock; SRCREV pins the
     # lockfile itself, so the resolved tree is deterministic for a given
     # recipe revision.
     bun install --frozen-lockfile --no-progress

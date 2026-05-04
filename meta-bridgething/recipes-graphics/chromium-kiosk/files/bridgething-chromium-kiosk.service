@@ -1,24 +1,15 @@
 [Unit]
-Description=Bridgething chromium kiosk (auto-launches the webapp on boot)
+Description=Bridgething chromium kiosk
 BindsTo=bridgething-weston.service
-After=bridgething-weston.service bridgething.service
+After=bridgething-weston.service
 PartOf=bridgething-weston.service
-# Prefer the bridgething daemon to be up before chromium navigates so the
-# initial fetch hits a populated server instead of triggering chromium's
-# error page. systemd treats Wants= as a soft dep when bridgething.service
-# isn't installed yet, so the dev image still boots without a daemon.
-Wants=bridgething.service
+# Wants=bridgething.service
 
 [Service]
 Type=simple
 EnvironmentFile=-/etc/default/bridgething-kiosk
 Environment=XDG_RUNTIME_DIR=/run/weston
 Environment=WAYLAND_DISPLAY=wayland-1
-# blank cursor theme — chromium calls libwayland-cursor on every
-# pointer-enter to fetch a cursor surface, which reads XCURSOR_THEME
-# from env (NOT /etc/environment.d, that's user-manager only).
-# Together with weston's own cursor-theme=blank in weston.ini this
-# kills every code path a cursor could be drawn through.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_PATH=/usr/share/icons
 # Block chromium from setting nice < 0 on its UI / IO / GPU threads.
@@ -36,13 +27,6 @@ CapabilityBoundingSet=~CAP_SYS_NICE
 AmbientCapabilities=
 LimitNICE=20
 NoNewPrivileges=yes
-# Persistent --user-data-dir on the data partition. systemd creates
-# /var/cache/bridgething/chromium with this owner/mode on first boot
-# (mode default 0755) and re-asserts perms on every start. Survives
-# reboot, OTA, and bootslot swap (data is shared between system_a /
-# system_b). Caches V8 bytecode + JIT artifacts (Code Cache/) and
-# the HTTP disk cache (Cache/) so first-load-after-boot stops being
-# the slow case.
 CacheDirectory=bridgething/chromium
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -S /run/weston/wayland-1 ] && exit 0; sleep 0.5; done; exit 1'
 ExecStart=/usr/bin/bridgething-chromium-launch

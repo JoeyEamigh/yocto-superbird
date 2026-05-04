@@ -1,5 +1,5 @@
 [Unit]
-Description=Weston compositor (Bridgething - DRM backend on DSI-1)
+Description=Weston compositor
 After=systemd-user-sessions.service multi-user.target
 Wants=dbus.socket
 After=dbus.socket
@@ -11,20 +11,11 @@ Group=root
 Environment=XDG_RUNTIME_DIR=/run/weston
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=WESTON_EXTRA_FLAGS=
-# blank cursor theme — applies to weston-desktop-shell when it draws
-# the default cursor on focus events. Has to be set in the unit
-# Environment because systemd system services don't read
-# /etc/environment.d (that's user-manager territory). The
-# blank-cursor package ships /usr/share/icons/blank/ with every
-# named cursor symlinked to a 1×1 transparent xcursor.
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_PATH=/usr/share/icons
 EnvironmentFile=-/etc/default/bridgething-weston
 ExecStartPre=/bin/mkdir -p /run/weston
 ExecStartPre=/bin/chmod 700 /run/weston
-# Wait for /dev/dri/card0 to appear (meson-drm probe race at boot).
-# Device units don't activate without a systemd udev tag; this poll-loop
-# is simpler than chasing a udev rule for a one-of-a-kind device.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do [ -e /dev/dri/card0 ] && exit 0; sleep 0.5; done; exit 1'
 ExecStart=/bin/sh -c 'exec /usr/bin/weston --config=/etc/weston.ini --socket=wayland-1 $WESTON_EXTRA_FLAGS'
 Restart=on-failure

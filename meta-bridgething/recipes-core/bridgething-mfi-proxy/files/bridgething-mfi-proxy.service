@@ -2,10 +2,8 @@
 Description=Bridgething MFi i2c-3 dev proxy (TCP server for cargo test)
 Documentation=https://github.com/JoeyEamigh/bridgething
 After=network.target
-# Chip is single-resource on i2c-3; ALS races the chip auth flow on the
-# same controller's bus. bridgething itself will eventually hold the chip
-# during iAP2 auth, so it conflicts too. Starting this unit stops both;
-# `just mfi-proxy-down` brings them back.
+# bridgething.service owns /dev/i2c-3 during iAP2 auth and the
+# backlight via the in-daemon ALS manager.
 Conflicts=bridgething.service bridgething-als.service
 ConditionPathExists=/dev/i2c-3
 ConditionPathExists=/sys/class/backlight/backlight/brightness

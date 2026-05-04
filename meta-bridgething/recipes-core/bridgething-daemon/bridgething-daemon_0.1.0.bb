@@ -44,7 +44,7 @@ CARGO_BUILD_FLAGS:remove = "--frozen"
 # gone (--frozen also implied --offline, hence the :remove above).
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
-DEPENDS = "dbus swupdate systemd clang-native"
+DEPENDS = "dbus swupdate systemd clang-native alsa-lib"
 
 # bindgen runs on the build host during `swupdate-sys`'s build.rs and
 # needs a host-runnable libclang. `clang-native` from meta-clang
