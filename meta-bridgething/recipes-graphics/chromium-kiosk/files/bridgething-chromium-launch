@@ -117,21 +117,68 @@
 # AudioContext - this lifts the M66+ default that requires a user
 # tap before either is permitted.
 #
+# Egress lockdown. The SOCKS proxy on 127.0.0.1:1080 tunnels webapp
+# traffic over Bluetooth (RFCOMM) to the paired phone, so every byte
+# chromium initiates on its own competes with the webapp for that
+# pipe. The goal is zero chromium-originated network activity - only
+# the active webapp's deliberate fetches should leave the device.
+#
+# --disable-background-networking was the historical kill for all of
+# this but chromium has progressively moved subsystems out from under
+# its umbrella. The four subsystems observed leaking on M147 each
+# need an explicit kill, by URL-void where possible:
+#
+#   accounts.google.com         GAIA / IdentityManager warmup
+#     --disable-gaia-services + --gaia-url=
+#   android.clients.google.com  GCM checkin + MCS + registration
+#     --gcm-checkin-url= --gcm-mcs-endpoint= --gcm-registration-url=
+#   clients2.google.com         component updater manifest poll
+#     --component-updater=url-source=...
+#     (--disable-component-update only blocks install, not the poll)
+#   www.google.com              variations seed fallback
+#     --variations-server-url= --variations-insecure-server-url=
+#     --disable-field-trial-config
+#
+# All voided URLs point at http://127.0.0.1:1/. Chromium auto-bypasses
+# loopback for the SOCKS proxy (M72+), so these requests never reach
+# bridgething's proxy - they hit a closed local TCP port and RST
+# immediately, the subsystem logs a transport failure and backs off.
+# This is strictly better than letting bridgething's proxy deny them,
+# which would burn BT airtime on the SOCKS handshake bridgething then
+# rejects, with chromium retrying through the same pipe.
+#
+# Loopback auto-bypass is also why the kiosk URL on 127.0.0.1:8891
+# keeps working unconditionally regardless of any active webapp's
+# net.proxy permission - the bridgething webserver is reached
+# directly, never through the SOCKS path.
+#
+# --disable-domain-reliability and --disable-client-side-phishing-detection
+# kill two more egress paths chromium initiates outside the
+# disable-background-networking umbrella; neither has a documented
+# URL override so they have to be killed by switch.
+#
 # The --disable-features list trims chromium subsystems that don't
-# apply to a 426 MB single-site offline kiosk:
-#   Translate                      cloud-side language detection
-#   BackForwardCache                no back/forward in a kiosk
-#   GlobalMediaControls             no audio output
-#   InterestFeedContentSuggestions  not a content surface
-#   MediaRouter                     no Cast targets
-#   MediaSessionService             no audio output
-#   OptimizationHints               cloud-fetched perf hint blob
-#   OptimizationGuideModelDownloading  on-device ML model downloads
-#   DialMediaRouteProvider          SSDP Cast discovery
-#   CalculateNativeWinOcclusion     Windows-only feature flag
-#   AutofillServerCommunication     cloud autofill suggestions
-# Each is feature-flag-gated rather than build-time-conditional, so
-# disabling at launch is the only way to skip the init cost.
+# apply to a 426 MB single-site offline kiosk. Each is feature-flag-
+# gated rather than build-time-conditional, so disabling at launch
+# is the only way to skip the init cost. Grouped by reason:
+#   no audio output / playback surface:
+#     GlobalMediaControls, MediaSessionService
+#   no Cast / DIAL discovery:
+#     MediaRouter, DialMediaRouteProvider
+#   no cloud lookups for translate / autofill / hints:
+#     Translate, AutofillServerCommunication, OptimizationHints,
+#     OptimizationGuideModelDownloading
+#   not a content surface:
+#     InterestFeedContentSuggestions
+#   no in-kiosk back/forward:
+#     BackForwardCache
+#   Windows-only flag, no-op on Linux:
+#     CalculateNativeWinOcclusion
+#   egress lockdown belt-and-suspenders. No documented URL override,
+#   so killed at the feature-flag layer where future milestones can't
+#   silently re-enable them:
+#     SafeBrowsing, NetworkTimeServiceQuerying, DnsOverHttps, FedCm,
+#     AcceptCHFrame, Reporting
 
 set -eu
 
@@ -155,6 +202,7 @@ exec /usr/bin/chromium \
     --ozone-platform-hint=wayland \
     --use-angle=gles \
     --disk-cache-size=52428800 \
+    --allow-insecure-localhost \
     --noerrdialogs \
     --disable-session-crashed-bubble \
     --disable-infobars \
@@ -169,12 +217,23 @@ exec /usr/bin/chromium \
     --no-pings \
     --autoplay-policy=no-user-gesture-required \
     --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
-    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication \
+    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting \
     --disable-component-update \
+    --component-updater=url-source=http://127.0.0.1:1/ \
     --disable-background-networking \
     --disable-sync \
     --disable-default-apps \
     --disable-extensions \
+    --disable-gaia-services \
+    --gaia-url=http://127.0.0.1:1/ \
+    --gcm-checkin-url=http://127.0.0.1:1/ \
+    --gcm-mcs-endpoint=http://127.0.0.1:1/ \
+    --gcm-registration-url=http://127.0.0.1:1/ \
+    --variations-server-url=http://127.0.0.1:1/ \
+    --variations-insecure-server-url=http://127.0.0.1:1/ \
+    --disable-field-trial-config \
+    --disable-domain-reliability \
+    --disable-client-side-phishing-detection \
     --user-data-dir=/var/cache/bridgething/chromium \
     --proxy-server=socks5://127.0.0.1:1080 \
     --remote-debugging-port=9223 \
