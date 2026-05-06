@@ -25,6 +25,7 @@ RDEPENDS:${PN} = " \
     bridgething-cursor-suppress \
     bridgething-fbpaint \
     bridgething-stock-webapp \
+    bridgething-hub-webapp \
     superbird-base-files \
     superbird-firmware \
     superbird-bluetooth \

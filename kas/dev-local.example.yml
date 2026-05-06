@@ -34,6 +34,9 @@ local_conf_header:
     EXTERNALSRC:pn-bridgething-daemon = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-daemon = "${WORKDIR}/build"
 
+    EXTERNALSRC:pn-bridgething-hub-webapp = "${BRIDGETHING_LOCAL}"
+    EXTERNALSRC_BUILD:pn-bridgething-hub-webapp = "${WORKDIR}/build"
+
     EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
 

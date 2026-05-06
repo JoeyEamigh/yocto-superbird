@@ -7,7 +7,8 @@ the boot-default active app."
 HOMEPAGE = "https://github.com/thinglabsoss/superbird-webapp"
 LICENSE = "CLOSED"
 
-SRC_URI = "git://github.com/thinglabsoss/superbird-webapp.git;protocol=https;branch=thinglabs"
+SRC_URI = "git://github.com/thinglabsoss/superbird-webapp.git;protocol=https;branch=thinglabs \
+           file://spotify.svg"
 SRCREV = "${AUTOREV}"
 
 DEPENDS = "bun-native"
@@ -38,6 +39,7 @@ do_compile() {
 do_install() {
     install -d ${D}${WEBAPP_DIR}
     cp -r ${S}/dist/. ${D}${WEBAPP_DIR}/
+    install -m 0644 ${UNPACKDIR}/spotify.svg ${D}${WEBAPP_DIR}/spotify.svg
     chown -R root:root ${D}${WEBAPP_DIR}
     find ${D}${WEBAPP_DIR} -type d -exec chmod 0755 {} \;
     find ${D}${WEBAPP_DIR} -type f -exec chmod 0644 {} \;
