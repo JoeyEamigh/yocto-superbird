@@ -92,6 +92,46 @@
 # uses content-hashed asset filenames so stale-cache-after-deploy is
 # a non-issue: a new build produces new filenames, the old ones are
 # unreferenced and get LRU-evicted.
+#
+# --enable-zero-copy switches GPU texture upload from the default
+# "CPU-side staging buffer + memcpy into GPU memory" path to a
+# direct DMA buffer the GPU reads in place. On Mali-G31 / Panfrost
+# CPU and GPU share physical RAM, so the staging copy is pure waste.
+# This saves one memcpy per uploaded raster tile and is one of the
+# easier wins on shared-memory ARM SoCs.
+#
+# --password-store=basic skips chromium's dbus probe for a
+# gnome-keyring / kwallet provider on startup. Neither exists on
+# the kiosk image, so the lookup always fails and the only effect
+# is a few ms of startup latency + spurious dbus traffic. `basic`
+# (in-memory store) is the explicit no-op that bypasses the probe.
+#
+# --no-pings drops HTML hyperlink-auditing `<a ping>` requests.
+# Useless for a single-site kiosk; non-zero CPU + network for
+# nothing.
+#
+# --autoplay-policy=no-user-gesture-required permits HTMLMediaElement
+# autoplay and Web Audio API audio context resume without a synthetic
+# user gesture. The device has no audio output, but webapps doing
+# visualizations through Web Audio API still need an unsuspended
+# AudioContext - this lifts the M66+ default that requires a user
+# tap before either is permitted.
+#
+# The --disable-features list trims chromium subsystems that don't
+# apply to a 426 MB single-site offline kiosk:
+#   Translate                      cloud-side language detection
+#   BackForwardCache                no back/forward in a kiosk
+#   GlobalMediaControls             no audio output
+#   InterestFeedContentSuggestions  not a content surface
+#   MediaRouter                     no Cast targets
+#   MediaSessionService             no audio output
+#   OptimizationHints               cloud-fetched perf hint blob
+#   OptimizationGuideModelDownloading  on-device ML model downloads
+#   DialMediaRouteProvider          SSDP Cast discovery
+#   CalculateNativeWinOcclusion     Windows-only feature flag
+#   AutofillServerCommunication     cloud autofill suggestions
+# Each is feature-flag-gated rather than build-time-conditional, so
+# disabling at launch is the only way to skip the init cost.
 
 set -eu
 
@@ -124,8 +164,12 @@ exec /usr/bin/chromium \
     --force-color-profile=srgb \
     --single-process \
     --num-raster-threads=4 \
+    --enable-zero-copy \
+    --password-store=basic \
+    --no-pings \
+    --autoplay-policy=no-user-gesture-required \
     --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
-    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter \
+    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication \
     --disable-component-update \
     --disable-background-networking \
     --disable-sync \

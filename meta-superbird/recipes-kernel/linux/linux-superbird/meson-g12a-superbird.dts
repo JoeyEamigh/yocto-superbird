@@ -191,18 +191,8 @@
 	 */
 	rotary {
 		compatible = "rotary-encoder";
-		/*
-		 * Z_9 listed before Z_8 so the rotary-encoder driver
-		 * decodes the gray-code with the inverted direction sense
-		 * relative to the physical wheel. Combined with libinput's
-		 * default natural-scroll inversion on a wheel-only pointer
-		 * (cap:p left scroll-nat in libinput-list-devices), the
-		 * round trip lands at "physical clockwise spin = content
-		 * scrolls right". Swap the two entries back if libinput
-		 * ever changes its default for hwheel-only pointers.
-		 */
-		gpios = <&gpio GPIOZ_9 GPIO_ACTIVE_LOW>,
-			<&gpio GPIOZ_8 GPIO_ACTIVE_LOW>;
+		gpios = <&gpio GPIOZ_8 GPIO_ACTIVE_LOW>,
+			<&gpio GPIOZ_9 GPIO_ACTIVE_LOW>;
 		interrupts-extended =
 			<&gpio_intc IRQID_GPIOZ_8 IRQ_TYPE_EDGE_RISING>,
 			<&gpio_intc IRQID_GPIOZ_9 IRQ_TYPE_EDGE_RISING>,
@@ -230,14 +220,7 @@
 	sound {
 		compatible = "amlogic,axg-sound-card";
 		model = "Superbird";
-		audio-aux-devs = <&tdmout_b>, <&tdmin_b>;
-		audio-routing = "TDMOUT_B IN 0", "FRDDR_A OUT 1",
-				"TDMOUT_B IN 1", "FRDDR_B OUT 1",
-				"TDM_B Playback", "TDMOUT_B OUT",
-				"TDMIN_B IN 1", "TDM_B Capture",
-				"TDMIN_B IN 4", "TDM_B Loopback",
-				"TODDR_A IN 1", "TDMIN_B OUT",
-				"TODDR_A IN 4", "PDM Capture",
+		audio-routing = "TODDR_A IN 4", "PDM Capture",
 				"TODDR_B IN 4", "PDM Capture";
 
 		clocks = <&clkc CLKID_MPLL2>,
@@ -251,35 +234,11 @@
 				       <270950400>,
 				       <393216000>;
 
-		dai-link-0 { sound-dai = <&frddr_a>; };
-		dai-link-1 { sound-dai = <&frddr_b>; };
-		dai-link-2 { sound-dai = <&toddr_a>; };
-		dai-link-3 { sound-dai = <&toddr_b>; };
-
-		/* Internal codec output via TDM-B → TOACODEC mux → on-chip
-		 * analog codec. Stock superbird's lcd_extern config encodes
-		 * tdmout_index=1, i.e. TOACODEC_IN_B is the input we feed. */
-		dai-link-4 {
-			sound-dai = <&tdmif_b>;
-			dai-format = "i2s";
-			dai-tdm-slot-tx-mask-0 = <1 1>;
-			mclk-fs = <256>;
-
-			codec {
-				sound-dai = <&toacodec TOACODEC_IN_B>;
-			};
-		};
-
-		/* Glue: TOACODEC mux output drives the on-chip T9015 acodec. */
-		dai-link-5 {
-			sound-dai = <&toacodec TOACODEC_OUT>;
-			codec {
-				sound-dai = <&acodec>;
-			};
-		};
+		dai-link-0 { sound-dai = <&toddr_a>; };
+		dai-link-1 { sound-dai = <&toddr_b>; };
 
 		/* 4-mic PDM array. */
-		dai-link-6 {
+		dai-link-2 {
 			sound-dai = <&pdm>;
 			codec {
 				sound-dai = <&dmics>;
@@ -657,42 +616,25 @@
 	status = "okay";
 };
 
-&acodec {
-	AVDD-supply = <&flash_1v8>;
-	status = "okay";
-};
-
-&toacodec {
-	status = "okay";
-};
-
-&frddr_a { status = "okay"; };
-&frddr_b { status = "okay"; };
 &toddr_a { status = "okay"; };
 &toddr_b { status = "okay"; };
 
-&tdmif_b {
-	pinctrl-0 = <&mclk0_a_pins>, <&tdm_b_fs_pins>, <&tdm_b_sclk_pins>,
-		    <&tdm_b_dout0_pins>;
-	pinctrl-names = "default";
-	status = "okay";
-
-	assigned-clocks = <&clkc_audio AUD_CLKID_TDM_MCLK_PAD0>,
-			  <&clkc_audio AUD_CLKID_TDM_SCLK_PAD1>,
-			  <&clkc_audio AUD_CLKID_TDM_LRCLK_PAD1>;
-	assigned-clock-parents = <&clkc_audio AUD_CLKID_MST_B_MCLK>,
-				 <&clkc_audio AUD_CLKID_MST_B_SCLK>,
-				 <&clkc_audio AUD_CLKID_MST_B_LRCLK>;
-	assigned-clock-rates = <0>, <0>, <0>;
-};
-
-&tdmout_b {
-	status = "okay";
-};
-
-&tdmin_b {
-	status = "okay";
-};
+/*
+ * The Car Thing has no speaker, so the entire TDM-B playback leg
+ * (tdmif_b → tdmout_b → toacodec → on-chip acodec) is dead weight.
+ * tdmif_b's pinctrl-0 also claimed GPIOA_0..GPIOA_3 (mclk0_a /
+ * tdm_b_sclk / tdm_b_fs / tdm_b_dout0) away from the four preset
+ * buttons that share those pads, silencing all four presets at the
+ * kernel input layer. PDM mic capture (GPIOA_7..GPIOA_9) is an
+ * independent path and is the only audio surface we need.
+ */
+&tdmif_b   { status = "disabled"; };
+&tdmout_b  { status = "disabled"; };
+&tdmin_b   { status = "disabled"; };
+&toacodec  { status = "disabled"; };
+&acodec    { status = "disabled"; };
+&frddr_a   { status = "disabled"; };
+&frddr_b   { status = "disabled"; };
 
 &pdm {
 	pinctrl-0 = <&pdm_din0_a_pins>, <&pdm_din1_a_pins>,

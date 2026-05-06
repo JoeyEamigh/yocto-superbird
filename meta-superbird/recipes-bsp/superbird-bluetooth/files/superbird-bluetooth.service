@@ -20,6 +20,15 @@ RequiresMountsFor=/lib/firmware
 Type=notify
 NotifyAccess=all
 ExecStart=/usr/bin/superbird-bluetooth
+# Belt-and-braces: even with Type=notify ordering, bluetoothd has been
+# observed to start with a cached patchram-default BDADDR when the
+# notify-barrier or first-run btattach races (script then exits 1 +
+# RestartSec=2 retries; bluetoothd is already up by then). Force a
+# restart of bluetoothd after our service is fully ready so the mgmt
+# cache always reflects the post-program BDADDR. try-restart is a
+# no-op when bluetoothd is not yet running, so it cannot create a
+# bring-up cycle.
+ExecStartPost=/bin/systemctl try-restart bluetooth.service
 Restart=on-failure
 RestartSec=2
 # Kill the entire cgroup at stop so that the daemonized gpioset

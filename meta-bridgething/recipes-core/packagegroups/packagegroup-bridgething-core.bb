@@ -18,6 +18,7 @@ RDEPENDS:${PN} = " \
     bridgething-daemon \
     bridgething-init \
     bridgething-clock \
+    bridgething-timezone \
     bridgething-usb-gadget \
     bridgething-mdns \
     bridgething-als \
@@ -43,6 +44,7 @@ RDEPENDS:${PN} = " \
     bluez5 \
     alsa-utils \
     zram \
+    tzdata \
     \
     e2fsprogs \
     e2fsprogs-mke2fs \
