@@ -176,6 +176,8 @@ exec /usr/bin/chromium \
     --disable-default-apps \
     --disable-extensions \
     --user-data-dir=/var/cache/bridgething/chromium \
+    --proxy-server=socks5://127.0.0.1:1080 \
+    --proxy-bypass-list="<-loopback>" \
     --remote-debugging-port=9223 \
     --remote-allow-origins=* \
     ${BRIDGETHING_KIOSK_EXTRA} \
