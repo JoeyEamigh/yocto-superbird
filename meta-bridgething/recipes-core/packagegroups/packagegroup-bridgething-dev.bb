@@ -16,7 +16,6 @@ PACKAGES = "${PN}"
 RDEPENDS:${PN} = " \
     \
     bridgething-weston-init-desktop \
-    bridgething-dev-persist \
     bridgething-daemon-dev-config \
     \
     cog \

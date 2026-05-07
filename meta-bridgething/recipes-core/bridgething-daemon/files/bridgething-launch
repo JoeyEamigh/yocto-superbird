@@ -1,14 +1,22 @@
 #!/bin/sh
-# /usr/bin/bridgething: prefer the dev-overlay binary at /opt/bridgething/daemon
-# if present, otherwise fall back to the in-rootfs binary at /usr/libexec.
+# /usr/bin/bridgething: pick the right daemon binary for this boot.
 #
-# /opt/bridgething is a bind-mount from the settings partition on dev images
-# (bridgething-dev-persist), so the bridgething-push-daemon helper writes a
-# replaceable binary there for iteration. Prod images don't bind-mount /opt,
-# so the dev path is absent and the wrapper falls straight through to libexec.
-DEV=/opt/bridgething/daemon/bridgething
-PROD=/usr/libexec/bridgething
-if [ -x "$DEV" ]; then
-    exec "$DEV" "$@"
+# Lookup order:
+#   1. /opt/bridgething/daemon/bridgething.current  (overlay; current)
+#   2. /usr/libexec/bridgething                     (squashfs; fallback)
+#
+# The .current path is the daemon hot-swap path: companion-pushed binary
+# updates land here via atomic rename, and dev iteration via push-daemon
+# uses the same path. The fallback is the binary baked into squashfs at
+# image build time. If the overlay is unavailable (bind-mount failed,
+# binary missing, mount-point empty after factory wipe), the launcher
+# silently falls through to the squashfs binary so the device still boots
+# to a working daemon.
+CURRENT=/opt/bridgething/daemon/bridgething.current
+FALLBACK=/usr/libexec/bridgething
+
+if [ -x "$CURRENT" ]; then
+    exec "$CURRENT" "$@"
 fi
-exec "$PROD" "$@"
+
+exec "$FALLBACK" "$@"

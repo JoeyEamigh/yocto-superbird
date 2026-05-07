@@ -1,0 +1,30 @@
+#!/bin/sh
+# Prime /opt/bridgething/daemon/bridgething.current from the squashfs
+# fallback if the overlay is empty. Runs after bridgething-opt-overlay
+# bind-mounts the settings partition onto /opt/bridgething; runs before
+# bridgething.service (which the launcher exec()s).
+#
+# Idempotent: a no-op when .current already exists. Two paths land here:
+#   1. First flash: settings.ext4 in the bundle pre-populated .current
+#      with the bundled daemon, so this runs as a no-op.
+#   2. Settings partition was wiped or factory-reset clobbered .current:
+#      copy the squashfs fallback in so the daemon can run on next boot
+#      while the companion catches up via hot-swap.
+set -eu
+
+DAEMON_DIR=/opt/bridgething/daemon
+CURRENT="${DAEMON_DIR}/bridgething.current"
+FALLBACK=/usr/libexec/bridgething
+
+mkdir -p "$DAEMON_DIR"
+
+if [ ! -e "$CURRENT" ]; then
+    if [ ! -x "$FALLBACK" ]; then
+        echo "bridgething-opt-init: ${FALLBACK} missing, can't seed ${CURRENT}" >&2
+        exit 1
+    fi
+    cp "$FALLBACK" "${CURRENT}.tmp"
+    chmod 0755 "${CURRENT}.tmp"
+    mv "${CURRENT}.tmp" "$CURRENT"
+    echo "bridgething-opt-init: seeded ${CURRENT} from fallback"
+fi

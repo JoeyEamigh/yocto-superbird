@@ -27,7 +27,9 @@ IMAGE_FEATURES += "ssh-server-openssh post-install-logging"
 
 # Shared install set. Per-variant recipes append on top: prod adds
 # bridgething-weston-init-kiosk; dev adds the dev packagegroup +
-# bridgething-weston-init-desktop + bridgething-dev-persist.
+# bridgething-weston-init-desktop. The persistent /opt/bridgething
+# overlay (settings-partition bind) ships in both via the core
+# packagegroup.
 IMAGE_INSTALL = " \
     packagegroup-core-boot \
     packagegroup-bridgething-core \
@@ -84,3 +86,26 @@ EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
 # intermediate.
 IMAGE_FSTYPES = "squashfs-lz4 squashfs-lz4.zck squashfs-lz4.zck.zckheader"
 IMAGE_CLASSES += "image_types_zchunk"
+
+# OTA channel + image variant + image version baked into the running
+# image's /etc/superbird so the companion's manifest poll loop knows
+# which channel to follow and which artifact path to fetch (auto-push
+# is gated on channel match; mismatch surfaces as a UI prompt for a
+# full reflash because cross-channel zcks won't line up). These knobs
+# live at image-recipe scope rather than at bridgething-init scope
+# because the package recipe sees neither the variant nor the channel.
+# Per-image bb files override `BRIDGETHING_IMAGE_VARIANT` (and dev
+# overrides `BRIDGETHING_CHANNEL`); `BRIDGETHING_IMAGE_VERSION` falls
+# back to DISTRO_VERSION when not pinned by a release cut.
+BRIDGETHING_CHANNEL ?= "stable"
+BRIDGETHING_IMAGE_VARIANT ?= "prod"
+BRIDGETHING_IMAGE_VERSION ?= "${DISTRO_VERSION}"
+
+bridgething_meta_postprocess() {
+    sed -i \
+        -e "s|@BRIDGETHING_CHANNEL@|${BRIDGETHING_CHANNEL}|g" \
+        -e "s|@BRIDGETHING_IMAGE_VARIANT@|${BRIDGETHING_IMAGE_VARIANT}|g" \
+        -e "s|@BRIDGETHING_IMAGE_VERSION@|${BRIDGETHING_IMAGE_VERSION}|g" \
+        ${IMAGE_ROOTFS}${datadir}/superbird/meta.json.in
+}
+IMAGE_PREPROCESS_COMMAND:append = " bridgething_meta_postprocess; "

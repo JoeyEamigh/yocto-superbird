@@ -1,5 +1,5 @@
 [Unit]
-Description=Bridgething clock tick (touches /var/lib/clock-mtime)
+Description=Bridgething clock tick
 RequiresMountsFor=/var/lib
 
 [Service]

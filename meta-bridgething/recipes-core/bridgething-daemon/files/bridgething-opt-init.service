@@ -1,0 +1,14 @@
+[Unit]
+Description=Bridgething overlay first-boot seeding
+After=bridgething-opt-overlay.service
+Requires=bridgething-opt-overlay.service
+Before=bridgething.service
+ConditionPathIsMountPoint=/opt/bridgething
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/bridgething-opt-init
+
+[Install]
+WantedBy=multi-user.target

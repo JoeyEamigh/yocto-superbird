@@ -21,18 +21,19 @@
 DESCRIPTION = "Generates a swupdate .swu archive that ships boot.img \
 verbatim (raw handler) and system.img as a zchunk delta header \
 (delta handler chained to raw). The delta handler reads chunks from \
-the currently-mounted slot, fetches missing chunks via HTTP, \
-reassembles, then hands the full image to the raw handler at the \
-inactive slot's offset. The system.img blob is filesystem-agnostic - \
-it follows SUPERBIRD_ROOTFS_TYPE (squashfs-lz4 on prod). \
+the currently-mounted slot, fetches missing chunks via HTTP from the \
+loopback range proxy at SUPERBIRD_OTA_DELTA_URL_BASE, reassembles, \
+then hands the full image to the raw handler at the inactive slot's \
+offset. The system.img blob is filesystem-agnostic - it follows \
+SUPERBIRD_ROOTFS_TYPE (squashfs-lz4 on prod). \
 \
-The url= property points at http://bridgething-host.local:8000/ - an \
-mDNS hostname the host side advertises (via avahi-publish-address \
-inside scripts/superbird-otahost) for whichever IP it has on the \
-gadget link. Resolution lands on the host's CDC-ECM iface; the host \
-serves the .zck through superbird-delta-stub.py on :8000. The \
-mDNS approach lets us drop the static-IP host config that the \
-prior http://10.42.1.1:8000/ default required."
+The url= property points at http://127.0.0.1:8893/ - the bridgething \
+daemon's HTTP-Range proxy. Each Range request the delta handler \
+sends gets translated into a wire OtaAssetRange request to the \
+pinned companion (the phone or host-gateway that drove OtaBegin), \
+which serves the requested byte ranges from a locally-cached .zck. \
+The companion side mirrors the daemon-side path verbatim - same \
+wire types, same chunked-on-disk discipline."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -70,18 +71,13 @@ SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 SUPERBIRD_OTA_SLOT_A_SOURCE = "/dev/mmcblk0p2"
 SUPERBIRD_OTA_SLOT_B_SOURCE = "/dev/mmcblk0p1"
 
-# Where the device fetches the full .zck from. The mDNS hostname
-# `bridgething-host.local` is advertised by `scripts/superbird-otahost`
-# on the host side (avahi-publish-address against the host's
-# gadget-link IP, which DHCP picks at runtime). Resolution on the
-# device goes through nss-mdns + the on-device avahi-daemon. This
-# replaces the static `http://10.42.1.1:8000/` default that needed
-# a manual NM profile pinning that IP to the CDC-ECM iface.
-#
-# Will flip to `http://127.0.0.1:NNN` once the daemon's HTTP-Range
-# bridge (which forwards chunk requests over RFCOMM to the gateway
-# phone) is in place and we know the URL contract.
-SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://bridgething-host.local:8000"
+# Where the device fetches the full .zck from. Always loopback - the
+# bridgething daemon binds an HTTP-Range proxy on
+# 127.0.0.1:BRIDGETHING_OTA_RANGE_PROXY_PORT (8893) and forwards each
+# Range request as a wire OtaAssetRange to the companion that drove
+# OtaBegin. update_id is implicit (one OTA in flight at a time); the
+# URL only carries the asset name, so this is a build-time constant.
+SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://127.0.0.1:8893"
 
 # Per-recipe staging subdir in DEPLOY_DIR_IMAGE. Lets us use the
 # bare cpio-entry names (`boot.img`, `system.img.zck.zckheader`)

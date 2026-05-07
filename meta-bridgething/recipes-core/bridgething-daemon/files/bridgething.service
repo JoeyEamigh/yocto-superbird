@@ -1,9 +1,12 @@
 [Unit]
 Description=Bridgething daemon
-After=network.target bluetooth.service bridgething-init.service
+After=network.target bluetooth.service bridgething-init.service bridgething-opt-init.service
 Wants=bluetooth.service
+Requires=bridgething-opt-init.service
 Before=bridgething-chromium-kiosk.service
 Conflicts=bridgething-als.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=notify
@@ -17,6 +20,7 @@ WatchdogSec=0
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=15
+OnFailure=bridgething-rollback.service
 
 [Install]
 WantedBy=multi-user.target

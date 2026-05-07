@@ -1,5 +1,5 @@
 [Unit]
-Description=Superbird Bluetooth (BCM20703A2 chip-enable + btattach)
+Description=Superbird Bluetooth (BCM20703A2)
 Documentation=https://github.com/JoeyEamigh/nixos-superbird
 DefaultDependencies=no
 After=systemd-tmpfiles-setup.service

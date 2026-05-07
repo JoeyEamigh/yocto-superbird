@@ -40,8 +40,9 @@ just boot-kernel               # exit burn mode into the new image
 
 About 18 s after `boot-kernel`, the device is up at `10.42.1.2` over
 USB-CDC-ECM (host-side NetworkManager profile required, see
-[Iteration](#iteration)) and ready for `just push-daemon` /
-`just push-webapp` / `just ssh`.
+[Iteration](#iteration)) and ready for `just push-webapp` / `just ssh`.
+Daemon binaries get pushed from the bridgething repo via `just push`
+(cross-build + atomic rotate at `/opt/bridgething/daemon/bridgething.current`).
 
 The release is updated manually after clean local builds (`just release`)
 — there's no CI yet and no semver, just whatever was last pushed.
@@ -133,7 +134,9 @@ Daemon and webapp hot-reload (dev images only — paths are bind-mounts
 from the settings partition that survive bootslot swaps and OTA):
 
 ```bash
-just push-daemon  ./build/release/bridgethingd
+# from the bridgething repo:
+just push                                  # cross-build + push the daemon
+# from this repo:
 just push-webapp  ./dist superbird-webapp
 ```
 

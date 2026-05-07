@@ -1,5 +1,5 @@
 [Unit]
-Description=Bridgething MFi i2c-3 dev proxy (TCP server for cargo test)
+Description=Bridgething MFi i2c-3 dev proxy
 Documentation=https://github.com/JoeyEamigh/bridgething
 After=network.target
 # bridgething.service owns /dev/i2c-3 during iAP2 auth and the

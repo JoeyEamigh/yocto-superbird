@@ -1,65 +1,132 @@
 #!/usr/bin/env bash
-# Push the most recently built bridgething images to the rolling
-# `latest` GitHub release, so fellow bridgething devs can grab a
-# recent dev/prod image without standing up the full Yocto build.
+# Push bridgething images to Cloudflare R2 + publish a manifest the
+# companion app polls for OTA. Replaces the previous gh-release flow.
 #
-# Run after a successful `just build` - uploads the stable-symlink
-# variants of the dev + prod flashthing zips (whichever artifact the
-# symlink currently resolves to). First run creates the release;
-# subsequent runs replace the artifacts in place via `--clobber`.
+# Run after a successful `just build`. Uploads `.swu`, `.zck`, and
+# `.flashthing.zip` for the requested channel(s), then synthesizes
+# `manifest/<channel>` JSON pointing at the uploaded artifacts.
 #
-# Requires gh CLI authed against the yocto-superbird repo.
+# Usage:
+#   superbird-release [channel]      # channel = dev | prod | all (default)
+#
+# Env:
+#   R2_BUCKET            R2 bucket name (default: bridgething-ota)
+#   OTA_PUBLIC_BASE      public URL prefix for the bucket
+#                        (default: https://ota.bridgething.com)
+#   WRANGLER             wrangler binary (default: wrangler)
+#
+# Requires `wrangler` authenticated against the Cloudflare account
+# that owns the bucket.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEPLOY="$REPO_ROOT/build/tmp/deploy/images/superbird"
 
-deploy="$REPO_ROOT/build/tmp/deploy/images/superbird"
-dev="$deploy/bridgething-dev-image-superbird-flashthing.zip"
-prod="$deploy/bridgething-prod-image-superbird-flashthing.zip"
+R2_BUCKET="${R2_BUCKET:-bridgething-ota}"
+OTA_PUBLIC_BASE="${OTA_PUBLIC_BASE:-https://ota.bridgething.com}"
+WRANGLER="${WRANGLER:-wrangler}"
 
-for f in "$dev" "$prod"; do
-  if [[ ! -e "$f" ]]; then
-    echo "missing $(basename "$f") - run 'just build' first" >&2
-    exit 1
-  fi
-done
+CHANNEL_ARG="${1:-all}"
+case "$CHANNEL_ARG" in
+  dev|prod|all) ;;
+  *) echo "usage: $(basename "$0") [dev|prod|all]" >&2; exit 2 ;;
+esac
 
-if ! command -v gh >/dev/null 2>&1; then
-  echo "gh CLI not on PATH (https://cli.github.com)" >&2
+if ! command -v "$WRANGLER" >/dev/null 2>&1; then
+  echo "wrangler not on PATH (https://developers.cloudflare.com/workers/wrangler/install-and-update/)" >&2
+  exit 2
+fi
+if ! command -v sha256sum >/dev/null 2>&1; then
+  echo "sha256sum not on PATH" >&2
+  exit 2
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq not on PATH" >&2
   exit 2
 fi
 
-date_str="$(date -u +'%Y-%m-%d %H:%M UTC')"
-commit="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-notes="Rolling latest bridgething dev + prod images.
+released_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+distro_version_file="$DEPLOY/.distro-version"
+# DISTRO_VERSION+DATETIME is rendered into sw-description; we mirror
+# it in the recipe by hashing the build's IMAGE_BUILD_ID. For now we
+# stamp the version from the filesystem mtime of the .swu, formatted
+# the same way (ISO + sortable). Producer can override via env.
+version_from_artifact() {
+  date -u -r "$1" +'%Y%m%d-%H%M%S'
+}
 
-Built: $date_str (commit \`$commit\`)
+upload_channel() {
+  local channel="$1"
+  local swu="$DEPLOY/bridgething-update-${channel}-superbird.swu"
+  local zck="$DEPLOY/bridgething-${channel}-image-superbird.squashfs-lz4.zck"
+  local zip="$DEPLOY/bridgething-${channel}-image-superbird-flashthing.zip"
 
-Flash from a clone of this repo:
+  for f in "$swu" "$zck" "$zip"; do
+    if [[ ! -e "$f" ]]; then
+      echo "[release] missing $(basename "$f") for channel $channel; run 'just build' first" >&2
+      exit 1
+    fi
+  done
 
-    cargo install flashthing-cli
-    sudo flashthing-cli --setup     # udev rule, Linux only
-    just install-dev                # or just install-prod
-    just boot-kernel                # exit burn mode into the new image
+  local version
+  version="${SUPERBIRD_RELEASE_VERSION:-$(version_from_artifact "$swu")}"
+  local prefix="releases/${channel}/${version}"
+  local update_id swu_size zck_size zip_size
 
-Device must be in burn mode (hold wheel-click while plugging in USB,
-or \`just reboot-to-burn\` from a running device)."
+  update_id="$(sha256sum "$swu" | awk '{print $1}')"
+  swu_size="$(stat -c %s "$swu")"
+  zck_size="$(stat -c %s "$zck")"
+  zip_size="$(stat -c %s "$zip")"
 
-cd "$REPO_ROOT"
+  echo "[release] channel=$channel version=$version update_id=${update_id:0:12}..."
+  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$swu")" --file "$swu"
+  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$zck")" --file "$zck"
+  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$zip")" --file "$zip"
 
-if gh release view latest >/dev/null 2>&1; then
-  echo "updating existing 'latest' release..."
-  gh release upload latest "$dev" "$prod" --clobber
-  gh release edit latest --notes "$notes"
+  local manifest
+  manifest="$(jq -n \
+    --arg version "$version" \
+    --arg channel "$channel" \
+    --arg update_id "$update_id" \
+    --arg swu_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$swu")" \
+    --arg zck_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$zck")" \
+    --arg zip_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$zip")" \
+    --argjson swu_size "$swu_size" \
+    --argjson zck_size "$zck_size" \
+    --argjson zip_size "$zip_size" \
+    --arg released_at "$released_at" \
+    --arg notes "${SUPERBIRD_RELEASE_NOTES:-Rolling latest bridgething ${channel} build.}" \
+    '{
+       version: $version,
+       channel: $channel,
+       update_id: $update_id,
+       swu_url: $swu_url,
+       swu_size: $swu_size,
+       zck_url: $zck_url,
+       zck_size: $zck_size,
+       flashthing_zip_url: $zip_url,
+       flashthing_zip_size: $zip_size,
+       released_at: $released_at,
+       notes: $notes
+     }')"
+  local manifest_tmp
+  manifest_tmp="$(mktemp)"
+  trap 'rm -f "$manifest_tmp"' RETURN
+  printf '%s\n' "$manifest" > "$manifest_tmp"
+
+  "$WRANGLER" r2 object put "$R2_BUCKET/manifest/${channel}" \
+    --file "$manifest_tmp" \
+    --content-type "application/json"
+  echo "[release] published manifest/${channel} → ${OTA_PUBLIC_BASE}/manifest/${channel}"
+}
+
+if [[ "$CHANNEL_ARG" == "all" ]]; then
+  upload_channel dev
+  upload_channel prod
 else
-  echo "creating 'latest' release..."
-  gh release create latest "$dev" "$prod" \
-    --title "Latest dev + prod images" \
-    --notes "$notes"
+  upload_channel "$CHANNEL_ARG"
 fi
 
-echo
-echo "release 'latest' updated."
-echo "consumers: 'just install-dev' / 'just install-prod' from a clone of this repo."
+echo "[release] done."

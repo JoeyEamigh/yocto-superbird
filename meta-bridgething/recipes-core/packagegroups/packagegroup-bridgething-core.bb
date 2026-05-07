@@ -16,6 +16,7 @@ PACKAGES = "${PN}"
 RDEPENDS:${PN} = " \
     \
     bridgething-daemon \
+    bridgething-opt-overlay \
     bridgething-init \
     bridgething-clock \
     bridgething-timezone \

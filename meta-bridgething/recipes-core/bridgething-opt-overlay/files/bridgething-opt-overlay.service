@@ -1,5 +1,5 @@
 [Unit]
-Description=Bridgething dev persistent overlay (/var/lib settings → /opt/bridgething)
+Description=Bridgething /opt/bridgething overlay
 After=local-fs.target var-lib.mount
 Requires=var-lib.mount
 ConditionPathIsMountPoint=!/opt/bridgething

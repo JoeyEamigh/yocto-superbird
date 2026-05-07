@@ -17,3 +17,8 @@ require bridgething-image-base.inc
 IMAGE_INSTALL:append = " \
     bridgething-weston-init-kiosk \
 "
+
+# Mark the running image's OTA identity. Channel defaults to stable
+# in bridgething-init.bb; pinning the variant explicitly here keeps
+# /etc/superbird honest if the default ever drifts.
+BRIDGETHING_IMAGE_VARIANT = "prod"

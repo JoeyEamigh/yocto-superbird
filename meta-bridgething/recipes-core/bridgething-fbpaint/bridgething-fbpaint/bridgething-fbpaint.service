@@ -1,5 +1,5 @@
 [Unit]
-Description=Paint 4-band test pattern at u-boot fb_addr (display handoff smoke test)
+Description=Paint 4-band test pattern at u-boot fb_addr
 After=basic.target
 DefaultDependencies=no
 

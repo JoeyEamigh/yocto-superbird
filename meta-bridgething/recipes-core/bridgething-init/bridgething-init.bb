@@ -42,6 +42,13 @@ IMAGE_BUILD_DATE = "${@d.getVar('DATETIME')[0:4]}-${@d.getVar('DATETIME')[4:6]}-
 IMAGE_BUILD_ID[vardepsexclude] = "DATETIME"
 IMAGE_BUILD_DATE[vardepsexclude] = "DATETIME"
 
+# The @BRIDGETHING_CHANNEL@ / @BRIDGETHING_IMAGE_VARIANT@ /
+# @BRIDGETHING_IMAGE_VERSION@ placeholders in the template are filled
+# in at image-build time (IMAGE_PREPROCESS_COMMAND in
+# bridgething-image-base.inc) because they're per-image, not
+# per-package. The package-level recipe leaves them as literal
+# placeholders for the image stage to replace.
+
 do_install() {
     install -d ${D}${datadir}/superbird
 

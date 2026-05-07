@@ -1,10 +1,19 @@
-SUMMARY = "Bridgething daemon (Rust workspace, superbird feature)"
+SUMMARY = "Bridgething daemon"
 DESCRIPTION = "Builds the bridgething Rust workspace from source and ships \
-the daemon at /usr/libexec/bridgething. /usr/bin/bridgething is a thin \
-wrapper that prefers the dev-overlay path /opt/bridgething/daemon/bridgething \
-when present (so push-daemon iteration keeps working) and falls back to the \
-in-rootfs binary otherwise. Also installs the systemd Type=notify unit and \
-tmpfiles config that creates /var/{,lib/}bridgething/{webapps,state}."
+the daemon at /usr/libexec/bridgething (the squashfs fallback). \
+/usr/bin/bridgething is a thin launcher that prefers \
+/opt/bridgething/daemon/bridgething.current (the writable overlay on the \
+settings partition, populated by the bundle's settings.ext4 and updated \
+in place by daemon hot-swap) and falls back to /usr/libexec/bridgething \
+when the overlay is unavailable. \
+\
+Also installs: a first-boot seeding oneshot that primes .current from \
+the fallback when missing, and a rollback service that promotes \
+.previous to .current when bridgething.service exceeds its restart \
+burst threshold. \
+\
+The systemd Type=notify unit and tmpfiles config that creates \
+/var/{,lib/}bridgething/{webapps,state} live alongside."
 HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
@@ -18,6 +27,10 @@ SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=m
            file://bridgething.service \
            file://bridgething.conf \
            file://bridgething-launch \
+           file://bridgething-opt-init \
+           file://bridgething-opt-init.service \
+           file://bridgething-rollback \
+           file://bridgething-rollback.service \
            file://bridgething-dev.conf"
 SRCREV = "${AUTOREV}"
 
@@ -65,10 +78,15 @@ export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
 # layer override - the formatting is cosmetic, not load-bearing.
 export DO_NOT_FORMAT = "1"
 
-SYSTEMD_SERVICE:${PN} = "bridgething.service"
+# bridgething-rollback.service is shipped via FILES but deliberately not
+# in SYSTEMD_SERVICE: it's pulled in by bridgething.service's OnFailure=,
+# never enabled or wanted by anything. systemd loads it on demand when
+# the trigger fires; symlinking it into a .wants/ would just queue it on
+# every boot, which isn't what we want.
+SYSTEMD_SERVICE:${PN} = "bridgething.service bridgething-opt-init.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-RDEPENDS:${PN} += "bridgething-stock-webapp swupdate systemd"
+RDEPENDS:${PN} += "bridgething-stock-webapp bridgething-opt-overlay swupdate systemd"
 
 # Override cargo.bbclass's default cargo_do_install — that one drops every
 # workspace binary into /usr/bin. We want the real binary at /usr/libexec
@@ -77,6 +95,10 @@ do_install() {
     install -d ${D}${libexecdir}
     install -m 0755 ${B}/target/${CARGO_TARGET_SUBDIR}/bridgething \
         ${D}${libexecdir}/bridgething
+    install -m 0755 ${UNPACKDIR}/bridgething-opt-init \
+        ${D}${libexecdir}/bridgething-opt-init
+    install -m 0755 ${UNPACKDIR}/bridgething-rollback \
+        ${D}${libexecdir}/bridgething-rollback
 
     install -d ${D}${bindir}
     install -m 0755 ${UNPACKDIR}/bridgething-launch ${D}${bindir}/bridgething
@@ -84,6 +106,10 @@ do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/bridgething.service \
         ${D}${systemd_system_unitdir}/bridgething.service
+    install -m 0644 ${UNPACKDIR}/bridgething-opt-init.service \
+        ${D}${systemd_system_unitdir}/bridgething-opt-init.service
+    install -m 0644 ${UNPACKDIR}/bridgething-rollback.service \
+        ${D}${systemd_system_unitdir}/bridgething-rollback.service
 
     install -d ${D}${nonarch_libdir}/tmpfiles.d
     install -m 0644 ${UNPACKDIR}/bridgething.conf \
@@ -101,8 +127,12 @@ PACKAGES =+ "${PN}-dev-config"
 
 FILES:${PN} = " \
     ${libexecdir}/bridgething \
+    ${libexecdir}/bridgething-opt-init \
+    ${libexecdir}/bridgething-rollback \
     ${bindir}/bridgething \
     ${systemd_system_unitdir}/bridgething.service \
+    ${systemd_system_unitdir}/bridgething-opt-init.service \
+    ${systemd_system_unitdir}/bridgething-rollback.service \
     ${nonarch_libdir}/tmpfiles.d/bridgething.conf \
 "
 

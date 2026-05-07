@@ -117,19 +117,22 @@ flash-env image="bridgething-dev-image":
 
 # --- Release / install (no-build dev path) ---
 # Distribution path for fellow bridgething devs who only want a recent
-# image to iterate against (push-daemon / push-webapp / ssh) without
-# standing up the full Yocto toolchain. Producer side runs `release`
+# image to iterate against (push-webapp / ssh, plus `just push` from
+# the bridgething repo for daemon binaries) without standing up the
+# full Yocto toolchain. Producer side runs `release`
 # after a clean build to push artifacts; consumer side runs
 # `install-dev` / `install-prod` from a clone of this repo.
 
-# Push the most recently built dev + prod flashthing zips to the
-# rolling `latest` GitHub release. Replaces existing artifacts in
-# place; no tags, no semver. Requires gh CLI authed against this repo.
-release:
-  scripts/superbird-release
+# Push the most recently built dev + prod flashthing zips, .swu, and
+# .zck to Cloudflare R2, then publish manifest/<channel> JSON. Default
+# uploads both channels; pass `dev` or `prod` to scope. Requires
+# wrangler authenticated against the Cloudflare account that owns the
+# bucket; see scripts/superbird-release for env knobs.
+release *args:
+  scripts/superbird-release {{args}}
 
-# Pull the latest dev image from the rolling release and flash it.
-# Skips the Yocto build entirely. Requires gh CLI + flashthing-cli;
+# Pull the latest dev image from the OTA manifest and flash it. Skips
+# the Yocto build entirely. Requires curl + jq + flashthing-cli;
 # device must be in burn mode (1b8e:c003). Run `just boot-kernel`
 # after to exit burn mode into the new image.
 install-dev:
@@ -179,11 +182,6 @@ boot-kernel:
 reboot-to-burn:
   scripts/superbird-reboot-to-burn
 
-# Push a daemon binary / dir into /opt/bridgething/daemon/ on the
-# device. Bind-mounted from settings, survives bootslot swaps + OTA.
-push-daemon local name="":
-  scripts/bridgething-push-daemon {{local}} {{name}}
-
 # Push a webapp bundle into /var/bridgething/webapps/<name>/. Default
 # name = basename of <local>.
 push-webapp local name="":
@@ -195,21 +193,12 @@ push-webapp local name="":
 cdp port="9223":
   scripts/bridgething-cdp {{port}}
 
-# Host-side OTA infra: publishes the mDNS alias
-# `bridgething-host.local` for the host's gadget-link IP and serves
-# the .zck artifact on :8000. The .swu's delta handler URL points at
-# this hostname, so both `just ota` (bridgething-ab) and
-# `host-gateway push-update` (daemon path) need it running.
-# Foreground; ctrl-C to stop. Pass `--image prod` for the prod zck.
-otahost *args:
-  scripts/superbird-otahost {{args}}
-
-# Delta-OTA from a booted device. Spawns superbird-otahost, scp's
-# the .swu manifest, runs swupdate via bridgething-ab apply (which
-# writes the inactive slot + atomically flips active_slot via the
-# manifest's bootenv block), then reboots. Defaults to the dev image
-# (bridgething-update-dev). Pass --image prod for the prod variant.
-# Skips the burn-mode-then-flashthing loop so iteration is way
-# faster than `just flash`.
+# Delta-OTA from a booted device. Drives `host-gateway push-update`
+# against the device's network gateway: opens OtaBegin, streams .swu
+# via OtaChunk, serves .zck byte ranges back through the daemon's
+# loopback range proxy. The daemon owns install + reboot. Defaults
+# to the dev image (bridgething-update-dev); pass --image prod for
+# the prod variant. Skips the burn-mode + flashthing loop so
+# iteration is much faster than `just flash`.
 ota *args:
   scripts/bridgething-ota {{args}}

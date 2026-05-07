@@ -1,22 +1,12 @@
 #!/usr/bin/env bash
 # bridgething-ota - delta-OTA iteration helper.
 #
-# scp's the .swu manifest to the device, runs `bridgething-ab apply`
-# over SSH. swupdate writes the inactive slot and the in-manifest
-# bootenv block atomically flips active_slot; bridgething-ab follows
-# up with want_boot=kernel + the new slot's try counter. Then we
-# reboot. ~one-shot equivalent of a full flash but skipping the
-# burn-mode dance.
-#
-# The .swu's sw-description hardcodes the URL
-# `http://bridgething-host.local:8000/system.img.zck` (rendered from
-# SUPERBIRD_OTA_DELTA_URL_BASE at build time). For the device to
-# resolve that name and reach the bytes you need
-# `superbird-otahost` running on the host - it publishes the mDNS
-# alias and serves the .zck. By default this script spawns it for
-# the duration of the apply; pass --no-server to assume it's already
-# running (e.g. so daemon-path testing via `host-gateway push-update`
-# can share one stub).
+# Drives `host-gateway push-update` against the booted device's
+# network gateway. host-gateway opens an OtaBegin, streams the .swu
+# via OtaChunk events on the Bulk lane, and serves byte ranges from
+# the local .zck whenever the daemon's range proxy asks. The daemon
+# does the actual install via libswupdate, atomically flips
+# active_slot via the manifest's bootenv block, and reboots.
 #
 # Defaults target bridgething-update-dev's artifacts (dev image, with
 # the dev packagegroup + persistent /opt overlay). Pass --image prod
@@ -24,22 +14,22 @@
 #
 # Usage:
 #   bridgething-ota [--image dev|prod] [--swu PATH] [--zck PATH]
-#                   [--port PORT] [--no-reboot] [--no-server]
+#                   [--url ws://...]
 #
 # Env:
-#   SUPERBIRD_HOST   device IP (default 10.42.1.2)
+#   SUPERBIRD_HOST   device IP (default 10.42.1.2; only used when
+#                    --url is not supplied)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$SCRIPT_DIR/../build/tmp/deploy/images/superbird"
+BRIDGETHING_DIR="$SCRIPT_DIR/../../bridgething"
 
 IMAGE=dev
 SWU=""
 ZCK=""
-PORT=8000
-DO_REBOOT=1
-WITH_SERVER=1
+URL=""
 
 usage() {
     sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
@@ -51,9 +41,7 @@ while [ $# -gt 0 ]; do
         --image)      IMAGE="$2"; shift 2 ;;
         --swu)        SWU="$2"; shift 2 ;;
         --zck)        ZCK="$2"; shift 2 ;;
-        --port)       PORT="$2"; shift 2 ;;
-        --no-reboot)  DO_REBOOT=0; shift ;;
-        --no-server)  WITH_SERVER=0; shift ;;
+        --url)        URL="$2"; shift 2 ;;
         -h|--help)    usage ;;
         *)            echo "unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -68,49 +56,19 @@ esac
 : "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-lz4.zck}"
 
 [ -f "$SWU" ] || { echo "[ota] swu not found: $SWU" >&2; exit 1; }
+[ -f "$ZCK" ] || { echo "[ota] zck not found: $ZCK" >&2; exit 1; }
 
 HOST="${SUPERBIRD_HOST:-10.42.1.2}"
-SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
-ssh_dev() { ssh "${SSH_OPTS[@]}" "root@${HOST}" "$@"; }
+: "${URL:=ws://${HOST}:8892/}"
 
-OTAHOST_PID=""
-cleanup() {
-    if [ -n "$OTAHOST_PID" ] && kill -0 "$OTAHOST_PID" 2>/dev/null; then
-        kill "$OTAHOST_PID" 2>/dev/null || true
-        wait "$OTAHOST_PID" 2>/dev/null || true
-    fi
-}
-trap cleanup EXIT
+echo "[ota] swu  = $(basename "$SWU") ($(du -h "$SWU" | cut -f1))"
+echo "[ota] zck  = $(basename "$ZCK") ($(du -h "$ZCK" | cut -f1))"
+echo "[ota] url  = $URL"
 
-if [ "$WITH_SERVER" = "1" ]; then
-    [ -f "$ZCK" ] || { echo "[ota] zck not found: $ZCK" >&2; exit 1; }
-
-    "$SCRIPT_DIR/superbird-otahost" --image "$IMAGE" --port "$PORT" --zck "$ZCK" \
-        > /tmp/superbird-otahost.log 2>&1 &
-    OTAHOST_PID=$!
-
-    # Wait for both subprocesses (mDNS + stub) to come up. The helper
-    # exits non-zero quickly if either fails to bind.
-    sleep 0.7
-    if ! kill -0 "$OTAHOST_PID" 2>/dev/null; then
-        echo "[ota] superbird-otahost failed to start - check /tmp/superbird-otahost.log" >&2
-        cat /tmp/superbird-otahost.log >&2 || true
-        exit 1
-    fi
-    echo "[ota] otahost up (pid $OTAHOST_PID); $(basename "$ZCK") on :$PORT"
-fi
-
-REMOTE_SWU="/tmp/$(basename "$SWU")"
-echo "[ota] uploading $(basename "$SWU") ($(du -h "$SWU" | cut -f1)) to ${HOST}:${REMOTE_SWU}"
-scp -C "${SSH_OPTS[@]}" -q "$SWU" "root@${HOST}:${REMOTE_SWU}"
-
-echo "[ota] applying"
-ssh_dev "bridgething-ab apply $REMOTE_SWU"
-
-if [ "$DO_REBOOT" = "1" ]; then
-    echo "[ota] rebooting"
-    # systemctl reboot drops the SSH session, so tolerate non-zero exit.
-    ssh_dev "systemctl reboot" || true
-fi
+cargo run --quiet --manifest-path "$BRIDGETHING_DIR/Cargo.toml" -p bridgething-host-gateway -- \
+    --url "$URL" \
+    push-update \
+    --zck "$ZCK" \
+    "$SWU"
 
 echo "[ota] done."

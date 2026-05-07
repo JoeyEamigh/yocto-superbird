@@ -7,9 +7,11 @@
   "modelName": "@SUPERBIRD_MODEL_NAME@",
   "btMac": "",
   "serialNumber": "",
+  "channel": "@BRIDGETHING_CHANNEL@",
+  "imageVariant": "@BRIDGETHING_IMAGE_VARIANT@",
+  "imageVersion": "@BRIDGETHING_IMAGE_VERSION@",
   "imageBuildId": "@IMAGE_BUILD_ID@",
   "imageBuildDate": "@IMAGE_BUILD_DATE@",
   "imageDistro": "@DISTRO@",
-  "imageDistroVersion": "@DISTRO_VERSION@",
   "imageMachine": "@MACHINE@"
 }

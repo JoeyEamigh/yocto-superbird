@@ -1,11 +1,14 @@
-SUMMARY = "Dev-image persistent /opt/bridgething overlay"
+SUMMARY = "Persistent /opt/bridgething overlay backed by the settings partition"
 DESCRIPTION = "Oneshot systemd service that mkdir's /var/lib/bridgething/persist \
 on the settings partition (shared between system_a and system_b) and \
-bind-mounts it onto /opt/bridgething. Files scp'd into /opt/bridgething \
-(daemon binaries, webapp bundles, ad-hoc test artifacts) survive bootslot \
-swaps and OTA upgrades - both critical for the dev iteration loop, where \
-you'd otherwise lose pushed changes the moment swupdate flipped \
-active_slot. \
+bind-mounts it onto /opt/bridgething. The bind-mount is the writable home \
+of the daemon binary (/opt/bridgething/daemon/bridgething.current), \
+installed webapps (/opt/bridgething/webapps/), and any artifacts pushed \
+during dev iteration. Survives bootslot swaps and OTA upgrades. \
+\
+The bind target also receives the pre-populated settings.ext4 contents \
+shipped in the flashable bundle, so first-flash devices come up with the \
+current daemon binary already in place. \
 \
 Implemented as a oneshot rather than a .mount unit because mount units \
 that order After=systemd-tmpfiles-setup hit an ordering cycle (mount is \
@@ -18,19 +21,19 @@ LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 SRC_URI = " \
-    file://bridgething-dev-persist.service \
+    file://bridgething-opt-overlay.service \
 "
 S = "${UNPACKDIR}"
 
 inherit systemd
 
-SYSTEMD_SERVICE:${PN} = "bridgething-dev-persist.service"
+SYSTEMD_SERVICE:${PN} = "bridgething-opt-overlay.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 do_install() {
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${S}/bridgething-dev-persist.service \
-        ${D}${systemd_system_unitdir}/bridgething-dev-persist.service
+    install -m 0644 ${S}/bridgething-opt-overlay.service \
+        ${D}${systemd_system_unitdir}/bridgething-opt-overlay.service
 
     # /opt/bridgething has to exist in the read-only rootfs as the
     # bind-mount target - mount(8) needs the directory to exist before
@@ -41,7 +44,7 @@ do_install() {
 }
 
 FILES:${PN} = " \
-    ${systemd_system_unitdir}/bridgething-dev-persist.service \
+    ${systemd_system_unitdir}/bridgething-opt-overlay.service \
     /opt \
     /opt/bridgething \
 "

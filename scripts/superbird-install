@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Pull the most recent bridgething image from the rolling `latest`
-# GitHub release and flash it to a Car Thing in burn mode. For fellow
-# bridgething devs who don't want to build the image themselves -
-# skips the multi-hour Yocto build and just grabs whatever was last
-# uploaded via `just release`.
+# Pull the most recent bridgething image from the OTA manifest and
+# flash it to a Car Thing in burn mode. For fellow bridgething devs
+# who don't want to build the image themselves - skips the multi-hour
+# Yocto build and just grabs whatever was last uploaded via
+# `just release`.
 #
 # Requires:
 #   - flashthing-cli (cargo install flashthing-cli)
-#   - gh CLI authed against the yocto-superbird repo
+#   - curl, jq
 #   - Car Thing in burn mode (USB enumerates as 1b8e:c003)
 #
 # After this finishes, run `just boot-kernel` to exit burn mode into
-# the freshly flashed image. Matches the two-step UX of `just flash`
-# so the iteration loop is the same whether you built locally or
-# pulled from releases.
+# the freshly flashed image.
+#
+# Env:
+#   OTA_PUBLIC_BASE   manifest URL prefix (default
+#                     https://ota.bridgething.com)
 
 set -euo pipefail
 
@@ -23,8 +25,7 @@ case "$variant" in
   *) echo "usage: $(basename "$0") dev|prod" >&2; exit 1 ;;
 esac
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OTA_PUBLIC_BASE="${OTA_PUBLIC_BASE:-https://ota.bridgething.com}"
 
 flashthing="${FLASHTHING_CLI:-flashthing-cli}"
 if ! command -v "$flashthing" >/dev/null 2>&1; then
@@ -40,20 +41,32 @@ EOF
   exit 2
 fi
 
-if ! command -v gh >/dev/null 2>&1; then
-  echo "gh CLI not on PATH (https://cli.github.com)" >&2
-  exit 2
+for tool in curl jq; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool not on PATH" >&2
+    exit 2
+  fi
+done
+
+manifest_url="${OTA_PUBLIC_BASE}/manifest/${variant}"
+echo "[install] fetching manifest: $manifest_url"
+manifest="$(curl -fsSL "$manifest_url")"
+
+zip_url="$(printf '%s' "$manifest" | jq -r '.flashthing_zip_url')"
+zip_size="$(printf '%s' "$manifest" | jq -r '.flashthing_zip_size')"
+version="$(printf '%s' "$manifest" | jq -r '.version')"
+
+if [[ -z "$zip_url" || "$zip_url" == "null" ]]; then
+  echo "[install] manifest missing flashthing_zip_url" >&2
+  exit 1
 fi
 
-zip_name="bridgething-${variant}-image-superbird-flashthing.zip"
-dest="${TMPDIR:-/tmp}/$zip_name"
+echo "[install] $variant version $version (~$((zip_size / 1024 / 1024)) MiB)"
+dest="${TMPDIR:-/tmp}/bridgething-${variant}-image-superbird-flashthing.zip"
+echo "[install] downloading $zip_url"
+curl -fL --output "$dest" "$zip_url"
 
-cd "$REPO_ROOT"
-
-echo "fetching $zip_name from rolling 'latest' release..."
-gh release download latest --pattern "$zip_name" --output "$dest" --clobber
-
-echo "flashing $variant image (~30-60s)..."
+echo "[install] flashing $variant image (~30-60s)..."
 "$flashthing" "$dest"
 
 cat <<EOF
