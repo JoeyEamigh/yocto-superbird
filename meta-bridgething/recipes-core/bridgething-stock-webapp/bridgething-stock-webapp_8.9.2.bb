@@ -7,7 +7,7 @@ the boot-default active app."
 HOMEPAGE = "https://github.com/thinglabsoss/superbird-webapp"
 LICENSE = "CLOSED"
 
-SRC_URI = "git://github.com/thinglabsoss/superbird-webapp.git;protocol=https;branch=thinglabs \
+SRC_URI = "git://github.com/thinglabsoss/superbird-webapp.git;protocol=https;branch=bridgething \
            file://spotify.svg"
 SRCREV = "${AUTOREV}"
 
