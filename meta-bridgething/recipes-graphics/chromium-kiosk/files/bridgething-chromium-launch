@@ -216,7 +216,7 @@ exec /usr/bin/chromium \
     --password-store=basic \
     --no-pings \
     --autoplay-policy=no-user-gesture-required \
-    --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
+    --js-flags="--max-old-space-size=192 --max-semi-space-size=16 --no-lazy" \
     --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting \
     --disable-component-update \
     --component-updater=url-source=http://127.0.0.1:1/ \
