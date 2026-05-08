@@ -2,13 +2,16 @@ SUMMARY = "Bridgething first-boot init: /etc/superbird metadata + BT alias"
 DESCRIPTION = "Ships the meta.json template consumed by the \
 bridgething daemon (read at /etc/superbird, which symlinks into \
 /var/lib/superbird/meta.json on the settings partition), plus a \
-oneshot systemd unit that fills in efuse-derived fields (btMac, \
-serialNumber) on first boot and seeds the bluez alias so the \
-device advertises as 'Car Thing (SN: xxxx)'. \
+oneshot systemd unit that re-renders meta.json from the template \
+on every boot - patching in efuse-derived fields (btMac, \
+serialNumber) - and seeds the bluez alias so the device \
+advertises as 'Car Thing (SN: xxxx)'. \
 \
 Static fields (name, version, fccId, icId, modelName, image \
 build identity) are baked in at build time via bitbake variable \
-expansion against the template."
+expansion against the template; the every-boot re-render keeps \
+them honest after a daemon push without depending on the \
+settings partition being wiped."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

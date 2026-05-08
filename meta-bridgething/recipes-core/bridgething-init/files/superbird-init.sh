@@ -1,17 +1,18 @@
 #!/bin/sh
-# First-boot (and every-boot, idempotent) initialization for the
-# Superbird:
-#   - Materialize /var/lib/superbird/meta.json from the build-time
-#     template if it doesn't exist yet.
-#   - Read btMac + serialNumber from the efuse nvmem cells and
-#     patch them into the JSON if they're still empty.
+# Every-boot initialization for the Superbird:
+#   - Re-render /var/lib/superbird/meta.json from the build-time
+#     template, then patch in efuse-derived btMac + serialNumber.
+#     The on-disk file is purely a runtime artifact - all real
+#     persistent state lives in sqlite. Re-rendering each boot
+#     keeps the build-identity fields (channel, imageVariant,
+#     imageVersion, imageBuildId, ...) honest after an OTA or
+#     daemon push without depending on settings being wiped.
 #   - Seed /var/lib/bluetooth/<MAC>/settings with a friendly Alias
 #     so the device shows up as "Car Thing (SN: xxxx)" when
 #     advertising.
 #
 # /etc is on the read-only system partition, so /etc/superbird is a
-# symlink -> /var/lib/superbird/meta.json (lives on the settings
-# partition, survives OTA + factory data wipes).
+# symlink -> /var/lib/superbird/meta.json on the settings partition.
 
 set -eu
 
@@ -26,10 +27,8 @@ EFUSE_CELLS="/sys/bus/nvmem/devices/efuse0/cells"
 
 mkdir -p "$META_DIR"
 
-if [ ! -f "$META_PATH" ]; then
-    cp "$TEMPLATE" "$META_PATH"
-    chmod 0644 "$META_PATH"
-fi
+cp "$TEMPLATE" "$META_PATH"
+chmod 0644 "$META_PATH"
 
 # Resolve cell paths via glob. Matches our DTS in
 # meson-g12a-superbird.dts: bt_mac at reg <0x6 0x6>, serial_number

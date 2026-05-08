@@ -252,37 +252,51 @@ python do_flashthing_zip () {
         {"type": "bulkcmd", "value": "saveenv"},
     ]
 
+    # Invalidate settings + data partitions so x-systemd.makefs
+    # runs mkfs.ext4 on first boot. writeLargeMemory of 1 MB of
+    # zeros at each partition start kills the ext4 superblock,
+    # which is what x-systemd.makefs probes for. The previous AML
+    # path used `amlmmc erase` here, but those bulkcmds routinely
+    # hung USB before completing - leaving stale runtime state on
+    # the settings partition across reflashes.
+    empty_path = os.path.join(stage, "empty-1m.bin")
+    with open(empty_path, "wb") as f:
+        f.write(b"\x00" * (1024 * 1024))
+
     if use_aml:
-        # Erase via AML MPT names so x-systemd.makefs triggers a
-        # fresh mkfs on first boot. Tail erases are best-effort -
-        # any of them can hang USB; env is already written so
-        # device boots fine even if the tail dies.
-        for name in ("misc", "settings", "data"):
-            steps.append({"type": "bulkcmd", "value": f"amlmmc erase {name}"})
+        # Offsets come from SUPERBIRD_PART_TABLE (matches the AML
+        # MPT byte-for-byte; same values restorePartition uses
+        # under the hood for system_a / system_b above).
+        invalidate_offsets = {}
+        for entry in part_table.split(","):
+            name, off, _sz = entry.split(":")
+            invalidate_offsets[name.strip()] = int(off.strip(), 0)
     else:
-        # Dev geometry doesn't match AML MPT for settings/data, so
-        # amlmmc-erase those names would clobber random eMMC bytes.
-        # Instead, write a small empty blob over the start of each
-        # MBR settings/data partition to invalidate any leftover
-        # ext4 superblock - x-systemd.makefs sees an unrecognized
-        # filesystem and runs mkfs.ext4 on first boot.
-        empty_path = os.path.join(stage, "empty-1m.bin")
-        with open(empty_path, "wb") as f:
-            f.write(b"\x00" * (1024 * 1024))
+        # Dev path: per-recipe env vars (geometry diverges from the
+        # AML MPT, can't be parsed out of part_table).
+        invalidate_offsets = {}
         for name, env_var in (
             ("settings", "SUPERBIRD_INVALIDATE_SETTINGS_OFFSET"),
             ("data",     "SUPERBIRD_INVALIDATE_DATA_OFFSET"),
         ):
             off = d.getVar(env_var)
             if off:
-                steps.append({
-                    "type": "writeLargeMemory",
-                    "value": {
-                        "address": int(off, 0),
-                        "data": {"filePath": "empty-1m.bin"},
-                        "blockLength": 4096,
-                    },
-                })
+                invalidate_offsets[name] = int(off, 0)
+
+    for name in ("settings", "data"):
+        off = invalidate_offsets.get(name)
+        if off is None:
+            if use_aml:
+                bb.fatal(f"SUPERBIRD_PART_TABLE missing '{name}' entry")
+            continue
+        steps.append({
+            "type": "writeLargeMemory",
+            "value": {
+                "address": off,
+                "data": {"filePath": "empty-1m.bin"},
+                "blockLength": 4096,
+            },
+        })
 
     meta = {
         "$schema": "/dev/null",
@@ -313,9 +327,8 @@ python do_flashthing_zip () {
         "system_a.ext2", "system_b.ext2",
         "env.txt",
         "meta.json",
+        "empty-1m.bin",
     ]
-    if not use_aml:
-        zip_inputs.append("empty-1m.bin")
     subprocess.run(["zip", "-q", "-X", out_zip, *zip_inputs], cwd=stage, check=True)
     os.symlink(os.path.basename(out_zip), stable)
 
