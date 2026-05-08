@@ -1,0 +1,110 @@
+#!/usr/bin/env -S uvx --quiet --from websocket-client --with requests python3
+"""
+Capture a chrome trace of a single user interaction on the device.
+
+Workflow:
+  1. SSH tunnel exposes CDP at 127.0.0.1:9223 (run `just cdp` first).
+  2. Run this script. It opens a CDP WS, starts tracing, waits N seconds.
+  3. While it's recording, do the slow interaction on the device once.
+  4. Script saves a JSON trace you can load into chrome://tracing or the
+     Performance panel in DevTools (drag-and-drop the file in).
+
+Categories cover the layers we need to attribute a slow first-interaction:
+  - blink.user_timing, devtools.timeline: high-level framework events.
+  - v8, v8.execute, disabled-by-default-v8.compile: parse/compile/exec.
+  - cc, viz: compositor + raster. Catches Panfrost-side first-shader work.
+  - input, latencyInfo: input pipeline timing (touch through hit-test).
+  - loading, network, ipc: resource fetches + IPC under single-process.
+"""
+import json
+import os
+import sys
+import time
+import requests
+import websocket
+
+CDP_HTTP = os.environ.get("CDP_HTTP", "http://127.0.0.1:9223")
+DURATION = int(os.environ.get("DURATION", "8"))
+OUT = os.environ.get("OUT", f"/tmp/superbird-trace-{int(time.time())}.json")
+
+CATEGORIES = ",".join([
+    "-*",
+    "blink.user_timing",
+    "devtools.timeline",
+    "disabled-by-default-devtools.timeline",
+    "v8",
+    "v8.execute",
+    "disabled-by-default-v8.compile",
+    "cc",
+    "viz",
+    "input",
+    "latencyInfo",
+    "loading",
+    "network",
+    "ipc",
+    "toplevel",
+    "blink",
+])
+# Intentionally omitted:
+#   disabled-by-default-v8.cpu_profiler -- enabling this category causes V8
+#   to lazy-start its CPU profiler the first time JS executes after
+#   Tracing.start, which costs ~1.2s of CpuProfiler::StartProfiling +
+#   V8.CollectSourcePositions on a constrained device. That's pure observer
+#   effect: the cost only shows up because tracing is on. Without it, V8
+#   sample-attribution is gone but timing of EventDispatch / FunctionCall /
+#   HandleInputEvent / BeginMainFrame is unchanged - sufficient to see
+#   what's eating each first-of-type click.
+
+def main():
+    targets = requests.get(f"{CDP_HTTP}/json/list", timeout=5).json()
+    page = next((t for t in targets if t.get("type") == "page"), None)
+    if not page:
+        print("no page target found", file=sys.stderr)
+        sys.exit(1)
+    ws_url = page["webSocketDebuggerUrl"]
+    print(f"target: {page.get('title')!r}  url={page.get('url')}", file=sys.stderr)
+
+    ws = websocket.create_connection(ws_url, header={"Origin": "http://localhost"})
+
+    msg_id = [0]
+    def send(method, params=None):
+        msg_id[0] += 1
+        ws.send(json.dumps({"id": msg_id[0], "method": method, "params": params or {}}))
+        while True:
+            frame = json.loads(ws.recv())
+            if frame.get("id") == msg_id[0]:
+                return frame
+
+    chunks = []
+    def collect_until_complete():
+        while True:
+            frame = json.loads(ws.recv())
+            method = frame.get("method")
+            if method == "Tracing.dataCollected":
+                chunks.extend(frame["params"]["value"])
+            elif method == "Tracing.tracingComplete":
+                return
+
+    print(f"starting trace ({DURATION}s) — interact with the device NOW", file=sys.stderr)
+    send("Tracing.start", {
+        "categories": CATEGORIES,
+        "transferMode": "ReportEvents",
+        "options": "record-as-much-as-possible",
+    })
+    for s in range(DURATION, 0, -1):
+        sys.stderr.write(f"\r  {s}s remaining... ")
+        sys.stderr.flush()
+        time.sleep(1)
+    sys.stderr.write("\rstopping...           \n")
+    send("Tracing.end")
+    collect_until_complete()
+    ws.close()
+
+    out = {"traceEvents": chunks}
+    with open(OUT, "w") as f:
+        json.dump(out, f)
+    print(f"saved {len(chunks)} events to {OUT}", file=sys.stderr)
+    print(f"load via DevTools Performance panel (drag-and-drop) or chrome://tracing", file=sys.stderr)
+
+if __name__ == "__main__":
+    main()
