@@ -1,22 +1,44 @@
 #!/usr/bin/env bash
-# Push bridgething images to Cloudflare R2 + publish a manifest the
-# companion app polls for OTA. Replaces the previous gh-release flow.
+# Push bridgething image artifacts to Cloudflare R2 under the layout
+# the swift companion (and bridgething.com bundle workflow) expect:
 #
-# Run after a successful `just build`. Uploads `.swu`, `.zck`, and
-# `.flashthing.zip` for the requested channel(s), then synthesizes
-# `manifest/<channel>` JSON pointing at the uploaded artifacts.
+#   ota.bridgething.com/images/<channel>/<image-version>/bridgething-<variant>-image-superbird.swu
+#                                                       /bridgething-<variant>-image-superbird.squashfs-lz4.zck
+#                                                       /bridgething-<variant>-image-superbird-flashthing.zip
+#
+# The discover manifest at ota.bridgething.com/manifest.json is owned
+# by `bridgething.com/manifest:build`; this script does not touch it.
+# After uploading, edit `bridgething.com/manifest/bundles.yaml`,
+# regenerate, and `rclone copy` the manifest separately.
+#
+# Variant is what yocto produces (dev|prod). Channel is what the
+# companion uses (dev|stable). Mapping below mirrors the per-image
+# `BRIDGETHING_CHANNEL` defaults in `bridgething-image-base.inc`.
+#
+# Uploads go through rclone (S3 backend) because wrangler caps single
+# `r2 object put` at 300 MiB and the .zck / flashthing.zip artifacts
+# are larger. The same path the bundle.yml workflow uses on CI.
 #
 # Usage:
-#   superbird-release [channel]      # channel = dev | prod | all (default)
+#   superbird-release [variant]      # variant = dev | prod | all (default)
 #
 # Env:
-#   R2_BUCKET            R2 bucket name (default: bridgething-ota)
-#   OTA_PUBLIC_BASE      public URL prefix for the bucket
-#                        (default: https://ota.bridgething.com)
-#   WRANGLER             wrangler binary (default: wrangler)
+#   SUPERBIRD_RELEASE_VERSION  image version (e.g. 0.1.0). Falls back
+#                              to the .swu artifact mtime when unset.
+#                              Must equal what the running image
+#                              announces (BRIDGETHING_IMAGE_VERSION,
+#                              defaulting to DISTRO_VERSION = 0.1.0
+#                              today) or the companion's URL
+#                              derivation will miss the artifacts.
+#   R2_BUCKET                  R2 bucket name (default: bridgething-ota)
+#   RCLONE_REMOTE              rclone remote name pointing at the R2
+#                              account's S3 endpoint (default: r2)
 #
-# Requires `wrangler` authenticated against the Cloudflare account
-# that owns the bucket.
+# Requires `rclone` configured with an S3 remote against the
+# Cloudflare account that owns the bucket. Generate R2 access keys at
+# Cloudflare dashboard -> R2 -> Manage R2 API Tokens, then add an
+# `[r2]` block to ~/.config/rclone/rclone.conf with type=s3,
+# provider=Cloudflare, region=auto, endpoint=https://<account>.r2.cloudflarestorage.com.
 
 set -euo pipefail
 
@@ -25,108 +47,84 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEPLOY="$REPO_ROOT/build/tmp/deploy/images/superbird"
 
 R2_BUCKET="${R2_BUCKET:-bridgething-ota}"
-OTA_PUBLIC_BASE="${OTA_PUBLIC_BASE:-https://ota.bridgething.com}"
-WRANGLER="${WRANGLER:-wrangler}"
+RCLONE_REMOTE="${RCLONE_REMOTE:-r2}"
 
-CHANNEL_ARG="${1:-all}"
-case "$CHANNEL_ARG" in
+VARIANT_ARG="${1:-all}"
+case "$VARIANT_ARG" in
   dev|prod|all) ;;
   *) echo "usage: $(basename "$0") [dev|prod|all]" >&2; exit 2 ;;
 esac
 
-if ! command -v "$WRANGLER" >/dev/null 2>&1; then
-  echo "wrangler not on PATH (https://developers.cloudflare.com/workers/wrangler/install-and-update/)" >&2
-  exit 2
-fi
-if ! command -v sha256sum >/dev/null 2>&1; then
-  echo "sha256sum not on PATH" >&2
-  exit 2
-fi
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq not on PATH" >&2
+if ! command -v rclone >/dev/null 2>&1; then
+  echo "rclone not on PATH (https://rclone.org/install/)" >&2
   exit 2
 fi
 
-released_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-distro_version_file="$DEPLOY/.distro-version"
-# DISTRO_VERSION+DATETIME is rendered into sw-description; we mirror
-# it in the recipe by hashing the build's IMAGE_BUILD_ID. For now we
-# stamp the version from the filesystem mtime of the .swu, formatted
-# the same way (ISO + sortable). Producer can override via env.
+if ! rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:$"; then
+  echo "rclone remote '${RCLONE_REMOTE}:' not configured. See script header for setup." >&2
+  exit 2
+fi
+
+# variant -> channel mapping. Mirrors bridgething-image-base.inc and
+# the per-image bb overrides (dev image flips BRIDGETHING_CHANNEL=dev).
+variant_to_channel() {
+  case "$1" in
+    dev)  echo dev ;;
+    prod) echo stable ;;
+    *)    echo "unknown variant: $1" >&2; exit 2 ;;
+  esac
+}
+
 version_from_artifact() {
   date -u -r "$1" +'%Y%m%d-%H%M%S'
 }
 
-upload_channel() {
-  local channel="$1"
-  local swu="$DEPLOY/bridgething-update-${channel}-superbird.swu"
-  local zck="$DEPLOY/bridgething-${channel}-image-superbird.squashfs-lz4.zck"
-  local zip="$DEPLOY/bridgething-${channel}-image-superbird-flashthing.zip"
+upload_variant() {
+  local variant="$1"
+  local channel
+  channel="$(variant_to_channel "$variant")"
+
+  local swu="$DEPLOY/bridgething-update-${variant}-superbird.swu"
+  local zck="$DEPLOY/bridgething-${variant}-image-superbird.squashfs-lz4.zck"
+  local zip="$DEPLOY/bridgething-${variant}-image-superbird-flashthing.zip"
 
   for f in "$swu" "$zck" "$zip"; do
     if [[ ! -e "$f" ]]; then
-      echo "[release] missing $(basename "$f") for channel $channel; run 'just build' first" >&2
+      echo "[release] missing $(basename "$f") for variant $variant; run 'just build' first" >&2
       exit 1
     fi
   done
 
   local version
   version="${SUPERBIRD_RELEASE_VERSION:-$(version_from_artifact "$swu")}"
-  local prefix="releases/${channel}/${version}"
-  local update_id swu_size zck_size zip_size
+  if [[ -z "${SUPERBIRD_RELEASE_VERSION:-}" ]]; then
+    echo "[release] WARN: SUPERBIRD_RELEASE_VERSION unset; using $version (artifact mtime)." >&2
+    echo "[release]       The companion derives URLs from the device's BRIDGETHING_IMAGE_VERSION;" >&2
+    echo "[release]       set SUPERBIRD_RELEASE_VERSION to that value (e.g. 0.1.0) before testing." >&2
+  fi
 
-  update_id="$(sha256sum "$swu" | awk '{print $1}')"
-  swu_size="$(stat -c %s "$swu")"
-  zck_size="$(stat -c %s "$zck")"
-  zip_size="$(stat -c %s "$zip")"
+  local prefix="images/${channel}/${version}"
+  local dest="${RCLONE_REMOTE}:${R2_BUCKET}/${prefix}"
 
-  echo "[release] channel=$channel version=$version update_id=${update_id:0:12}..."
-  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$swu")" --file "$swu"
-  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$zck")" --file "$zck"
-  "$WRANGLER" r2 object put "$R2_BUCKET/${prefix}/$(basename "$zip")" --file "$zip"
-
-  local manifest
-  manifest="$(jq -n \
-    --arg version "$version" \
-    --arg channel "$channel" \
-    --arg update_id "$update_id" \
-    --arg swu_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$swu")" \
-    --arg zck_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$zck")" \
-    --arg zip_url "${OTA_PUBLIC_BASE}/${prefix}/$(basename "$zip")" \
-    --argjson swu_size "$swu_size" \
-    --argjson zck_size "$zck_size" \
-    --argjson zip_size "$zip_size" \
-    --arg released_at "$released_at" \
-    --arg notes "${SUPERBIRD_RELEASE_NOTES:-Rolling latest bridgething ${channel} build.}" \
-    '{
-       version: $version,
-       channel: $channel,
-       update_id: $update_id,
-       swu_url: $swu_url,
-       swu_size: $swu_size,
-       zck_url: $zck_url,
-       zck_size: $zck_size,
-       flashthing_zip_url: $zip_url,
-       flashthing_zip_size: $zip_size,
-       released_at: $released_at,
-       notes: $notes
-     }')"
-  local manifest_tmp
-  manifest_tmp="$(mktemp)"
-  trap 'rm -f "$manifest_tmp"' RETURN
-  printf '%s\n' "$manifest" > "$manifest_tmp"
-
-  "$WRANGLER" r2 object put "$R2_BUCKET/manifest/${channel}" \
-    --file "$manifest_tmp" \
-    --content-type "application/json"
-  echo "[release] published manifest/${channel} → ${OTA_PUBLIC_BASE}/manifest/${channel}"
+  echo "[release] variant=$variant channel=$channel version=$version -> $dest"
+  rclone copyto --progress --copy-links "$swu" "$dest/$(basename "$swu")" --s3-no-check-bucket
+  rclone copyto --progress --copy-links "$zck" "$dest/$(basename "$zck")" --s3-no-check-bucket
+  rclone copyto --progress --copy-links "$zip" "$dest/$(basename "$zip")" --s3-no-check-bucket
 }
 
-if [[ "$CHANNEL_ARG" == "all" ]]; then
-  upload_channel dev
-  upload_channel prod
+if [[ "$VARIANT_ARG" == "all" ]]; then
+  upload_variant dev
+  upload_variant prod
 else
-  upload_channel "$CHANNEL_ARG"
+  upload_variant "$VARIANT_ARG"
 fi
 
-echo "[release] done."
+cat <<EOF
+[release] artifacts uploaded.
+[release] next: regenerate the discover manifest at bridgething.com/manifest.json:
+[release]   - edit bridgething.com/manifest/bundles.yaml with this release
+[release]   - cd bridgething.com && bun run manifest:build
+[release]   - rclone copyto manifest/fixture.json ${RCLONE_REMOTE}:${R2_BUCKET}/manifest.json \\
+[release]       --header-upload "Content-Type: application/json" \\
+[release]       --header-upload "Cache-Control: public, max-age=300, must-revalidate"
+EOF

@@ -124,12 +124,22 @@ flash-env image="bridgething-dev-image":
 # `install-dev` / `install-prod` from a clone of this repo.
 
 # Push the most recently built dev + prod flashthing zips, .swu, and
-# .zck to Cloudflare R2, then publish manifest/<channel> JSON. Default
-# uploads both channels; pass `dev` or `prod` to scope. Requires
-# wrangler authenticated against the Cloudflare account that owns the
-# bucket; see scripts/superbird-release for env knobs.
+# .zck to Cloudflare R2 under the layout the swift companion expects
+# (images/<channel>/<image-version>/). Pass `dev` or `prod` to scope;
+# `all` does both. Requires rclone with an `[r2]` S3 remote configured;
+# see scripts/superbird-release for env knobs.
 release *args:
   scripts/superbird-release {{args}}
+
+# Full iteration loop: upload artifacts, recompose the first-flash
+# bundle from the freshly-built daemon binary, regenerate the discover
+# manifest, and republish manifest.json. Overwrites the matching
+# (channel, image-version) slot on R2 - re-run as you iterate. Default
+# variant is `prod` (channel=stable). Pass `dev` for the dev channel.
+# Requires SUPERBIRD_RELEASE_VERSION (e.g. 0.1.0); see
+# scripts/superbird-publish for the rest of the env knobs.
+publish variant="prod":
+  scripts/superbird-publish {{variant}}
 
 # Pull the latest dev image from the OTA manifest and flash it. Skips
 # the Yocto build entirely. Requires curl + jq + flashthing-cli;

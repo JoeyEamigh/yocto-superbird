@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# End-to-end iteration helper: take what `just build` just produced
+# in build/tmp/deploy/images/superbird and overwrite the matching
+# (channel, image-version) slot on R2 with it. Steps:
+#
+#   1. Upload .swu / .zck / flashthing.zip to images/<channel>/<v>/
+#      (delegates to scripts/superbird-release).
+#   2. Compose a first-flash bundle (flashthing.zip + a settings.ext4
+#      pre-populated with the new aarch64 daemon binary) via
+#      bridgething.com/scripts/bundle-zip.ts.
+#   3. Upload the bundle to r/<composite>.zip on R2.
+#   4. Update bridgething.com/manifest/bundles.yaml in place
+#      (idempotent; replaces the matching row when re-running).
+#   5. Regenerate manifest/fixture.json from sources via
+#      bridgething.com `bun run manifest:build`.
+#   6. Upload the regenerated manifest to manifest.json on R2.
+#
+# After this completes, the swift companion polling
+# https://ota.bridgething.com/manifest.json sees the new release and
+# the artifacts it derives URLs to are already live.
+#
+# Usage:
+#   superbird-publish [variant]      # variant = dev | prod (default prod)
+#
+# Env:
+#   SUPERBIRD_RELEASE_VERSION   image version (e.g. 0.1.0). Required;
+#                               must equal what the running image
+#                               announces (BRIDGETHING_IMAGE_VERSION).
+#   SUPERBIRD_DAEMON_VERSION    daemon version (default: same as the
+#                               release version, since both are pinned
+#                               to DISTRO_VERSION today).
+#   R2_BUCKET                   default: bridgething-ota
+#   RCLONE_REMOTE               default: r2
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SITE_ROOT="$(cd "$REPO_ROOT/../bridgething.com" && pwd)"
+DEPLOY="$REPO_ROOT/build/tmp/deploy/images/superbird"
+DAEMON_WORK="$REPO_ROOT/build/tmp/work/cortexa53-poky-linux/bridgething-daemon"
+
+R2_BUCKET="${R2_BUCKET:-bridgething-ota}"
+RCLONE_REMOTE="${RCLONE_REMOTE:-r2}"
+
+VARIANT="${1:-prod}"
+case "$VARIANT" in
+  dev|prod) ;;
+  *) echo "usage: $(basename "$0") [dev|prod]" >&2; exit 2 ;;
+esac
+
+case "$VARIANT" in
+  dev)  CHANNEL=dev ;;
+  prod) CHANNEL=stable ;;
+esac
+
+if [[ -z "${SUPERBIRD_RELEASE_VERSION:-}" ]]; then
+  echo "[publish] SUPERBIRD_RELEASE_VERSION must be set (e.g. 0.1.0). It MUST" >&2
+  echo "[publish] match the device-announced BRIDGETHING_IMAGE_VERSION or the" >&2
+  echo "[publish] swift companion's URL derivation will miss the artifacts." >&2
+  exit 2
+fi
+IMAGE_VERSION="$SUPERBIRD_RELEASE_VERSION"
+DAEMON_VERSION="${SUPERBIRD_DAEMON_VERSION:-$IMAGE_VERSION}"
+COMPOSITE="${DAEMON_VERSION}+image.${IMAGE_VERSION}"
+
+for cmd in rclone bun jq sha256sum stat; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "[publish] missing $cmd" >&2; exit 2; }
+done
+
+if ! rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:$"; then
+  echo "[publish] rclone remote '${RCLONE_REMOTE}:' not configured" >&2
+  exit 2
+fi
+
+echo "[publish] variant=$VARIANT channel=$CHANNEL image=$IMAGE_VERSION daemon=$DAEMON_VERSION composite=$COMPOSITE"
+
+# 1. Upload image artifacts.
+"$SCRIPT_DIR/superbird-release" "$VARIANT"
+
+# 2. Compose first-flash bundle.
+DAEMON_BIN="$DAEMON_WORK/$DAEMON_VERSION/image/usr/libexec/bridgething"
+IMAGE_ZIP="$DEPLOY/bridgething-${VARIANT}-image-superbird-flashthing.zip"
+
+[[ -x "$DAEMON_BIN" ]] || { echo "[publish] daemon binary missing: $DAEMON_BIN" >&2; exit 1; }
+[[ -e "$IMAGE_ZIP" ]] || { echo "[publish] image zip missing: $IMAGE_ZIP" >&2; exit 1; }
+
+BUNDLE_OUT="$DEPLOY/bridgething-${COMPOSITE}-${CHANNEL}.zip"
+echo "[publish] composing bundle -> $BUNDLE_OUT"
+META_JSON=$(cd "$SITE_ROOT" && bun run scripts/bundle-zip.ts \
+  --image-zip "$IMAGE_ZIP" \
+  --daemon-bin "$DAEMON_BIN" \
+  --image-version "$IMAGE_VERSION" \
+  --daemon-version "$DAEMON_VERSION" \
+  --channel "$CHANNEL" \
+  --output "$BUNDLE_OUT" | sed -n '/^{/,/^}/p')
+
+BUNDLE_SHA256=$(jq -r .sha256 <<<"$META_JSON")
+BUNDLE_SIZE=$(jq -r .size <<<"$META_JSON")
+[[ -n "$BUNDLE_SHA256" && -n "$BUNDLE_SIZE" ]] || { echo "[publish] bundle composer did not emit sha256/size" >&2; exit 1; }
+
+# 3. Upload the bundle.
+BUNDLE_KEY="r/$(basename "$BUNDLE_OUT")"
+echo "[publish] uploading bundle -> ${RCLONE_REMOTE}:${R2_BUCKET}/${BUNDLE_KEY}"
+rclone copyto --progress --copy-links \
+  "$BUNDLE_OUT" "${RCLONE_REMOTE}:${R2_BUCKET}/${BUNDLE_KEY}" \
+  --s3-no-check-bucket
+
+# 4. Update bundles.yaml.
+DOWNLOAD_URL="https://ota.bridgething.com/${BUNDLE_KEY}"
+echo "[publish] updating bundles.yaml"
+(cd "$SITE_ROOT" && bun run scripts/update-bundles-yaml.ts \
+  --channel "$CHANNEL" \
+  --daemon-version "$DAEMON_VERSION" \
+  --image-version "$IMAGE_VERSION" \
+  --daemon-bumped true \
+  --image-bumped true \
+  --size "$BUNDLE_SIZE" \
+  --sha256 "$BUNDLE_SHA256" \
+  --url "$DOWNLOAD_URL")
+
+# 5. Regenerate manifest.
+echo "[publish] regenerating manifest"
+(cd "$SITE_ROOT" && bun run manifest:build)
+
+# 6. Upload manifest.
+echo "[publish] uploading manifest"
+rclone copyto \
+  "$SITE_ROOT/manifest/fixture.json" \
+  "${RCLONE_REMOTE}:${R2_BUCKET}/manifest.json" \
+  --s3-no-check-bucket \
+  --header-upload "Content-Type: application/json" \
+  --header-upload "Cache-Control: public, max-age=300, must-revalidate"
+
+cat <<EOF
+[publish] done.
+[publish]   manifest:  https://ota.bridgething.com/manifest.json
+[publish]   bundle:    ${DOWNLOAD_URL}
+[publish]   composite: ${COMPOSITE}  (channel=${CHANNEL})
+EOF
