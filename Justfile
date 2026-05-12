@@ -158,8 +158,11 @@ install-prod:
 # calling. SUPERBIRD_TOOL_DIR is the path to a clone of bishopdynamics'
 # superbird-tool repo (only used by `boot-kernel`).
 
-# SSH into the device over USB-CDC-ECM (10.42.1.2). Pass through any
-# args (commands, scp-style targets, etc).
+# SSH into the device over USB-CDC-ECM (defaults to bridgething.local via
+# mDNS; the per-serial subnet derivation in the gadget script means the
+# raw IP varies per device). Pass through any args (commands, scp-style
+# targets, etc). Override with SUPERBIRD_HOST=bridgething-<short-serial>
+# .local for multi-device hosts.
 ssh *args:
   scripts/superbird-ssh {{args}}
 

@@ -102,11 +102,27 @@ echo "$SERIAL"               > "$CFG/strings/0x409/serialnumber"
 # Stable MACs derived from the device serial so two Superbirds on the same
 # host don't collide. Locally-administered bit (0x02) set, multicast bit
 # clear. Each network function gets its own (host_addr, dev_addr) pair.
-mac_suffix=$(echo -n "$SERIAL" | sha256sum | cut -c1-8 | sed 's/../&:/g; s/:$//')
+SERIAL_SHA=$(echo -n "$SERIAL" | sha256sum)
+mac_suffix=$(echo "${SERIAL_SHA:0:8}" | sed 's/../&:/g; s/:$//')
 RNDIS_HOST_MAC="02:11:22:${mac_suffix:0:8}"
 RNDIS_DEV_MAC="02:11:33:${mac_suffix:0:8}"
 ECM_HOST_MAC="02:11:44:${mac_suffix:0:8}"
 ECM_DEV_MAC="02:11:55:${mac_suffix:0:8}"
+
+# Per-serial subnets so two Superbirds on the same host get distinct IPs.
+# Without this, both devices try to bind 10.42.1.2 on their ECM interface
+# and the host's routing table only sees one. Subnets are /29 (8 addrs
+# each = device + host + 4-slot DHCP pool + network/broadcast), packed
+# into the second octet so ECM lives in 10.42.0.0/24 and RNDIS in
+# 10.42.1.0/24 with up to 32 distinct devices per network type.
+serial_nibble=$((16#${SERIAL_SHA:0:2} & 0x1F))
+subnet_offset=$((serial_nibble * 8))
+ECM_DEV_IP="10.42.0.$((subnet_offset + 2))"
+ECM_HOST_IP="10.42.0.$((subnet_offset + 1))"
+RNDIS_DEV_IP="10.42.1.$((subnet_offset + 2))"
+RNDIS_HOST_IP="10.42.1.$((subnet_offset + 1))"
+DHCP_POOL_OFFSET=3
+DHCP_POOL_SIZE=4
 
 # Microsoft OS 1.0 descriptors. Windows queries the device with vendor
 # request 0xCD; the gadget framework intercepts that and returns the
@@ -165,6 +181,81 @@ fi
 # UDC here would expose the gadget before adbd has populated the FFS ep0
 # descriptors, leaving the ADB function half-registered.
 echo "gadget composed for $UDC (UDC bind deferred to adbd)"
-echo "  RNDIS    host=$RNDIS_HOST_MAC dev=$RNDIS_DEV_MAC ifname=urndis0"
-echo "  CDC-ECM  host=$ECM_HOST_MAC  dev=$ECM_DEV_MAC  ifname=uecm0"
+echo "  RNDIS    host=$RNDIS_HOST_MAC dev=$RNDIS_DEV_MAC ifname=urndis0 subnet=$RNDIS_DEV_IP/29"
+echo "  CDC-ECM  host=$ECM_HOST_MAC  dev=$ECM_DEV_MAC  ifname=uecm0  subnet=$ECM_DEV_IP/29"
 echo "  FFS-ADB  mounted at $FFS_MOUNT"
+
+# Generate per-serial .network files into /run/ (priority over /etc/).
+# Done after gadget bring-up so this script is the single source of
+# truth for per-serial values: if the gadget script doesn't run, the
+# default static .network files from /etc/ apply.
+mkdir -p /run/systemd/network
+
+cat > /run/systemd/network/11-usb-rndis.network <<NETWORK_RNDIS
+[Match]
+Name=urndis*
+
+[Network]
+Address=$RNDIS_DEV_IP/29
+DHCPServer=yes
+LinkLocalAddressing=no
+IPv6AcceptRA=no
+IPMasquerade=no
+ConfigureWithoutCarrier=yes
+EmitLLDP=no
+
+[DHCPServer]
+PoolOffset=$DHCP_POOL_OFFSET
+PoolSize=$DHCP_POOL_SIZE
+EmitDNS=no
+EmitNTP=no
+EmitRouter=no
+
+[Link]
+RequiredForOnline=no
+NETWORK_RNDIS
+
+cat > /run/systemd/network/12-usb-ecm.network <<NETWORK_ECM
+[Match]
+Name=uecm*
+
+[Network]
+Address=$ECM_DEV_IP/29
+DHCPServer=yes
+LinkLocalAddressing=no
+IPv6AcceptRA=no
+IPMasquerade=no
+ConfigureWithoutCarrier=yes
+EmitLLDP=no
+
+[DHCPServer]
+PoolOffset=$DHCP_POOL_OFFSET
+PoolSize=$DHCP_POOL_SIZE
+EmitDNS=no
+EmitNTP=no
+EmitRouter=no
+
+[Link]
+RequiredForOnline=no
+NETWORK_ECM
+
+# Reload networkd so it picks up the per-serial .network files. Failure
+# here is non-fatal - on first boot, networkd may not be running yet and
+# will read /run/systemd/network/ on its own start.
+if systemctl is-active --quiet systemd-networkd 2>/dev/null; then
+    networkctl reload || true
+fi
+
+# Per-serial mDNS hostname so multiple devices on the same LAN don't
+# collide on the bare `bridgething.local`. Avahi auto-suffixes
+# duplicates anyway, but a stable per-serial name lets SDK callers
+# resolve a specific device without guessing. Transient (writes to
+# /proc/sys/kernel/hostname) so the /etc filesystem can stay readonly.
+SHORT_SERIAL=$(echo "${SERIAL_SHA:0:6}")
+hostnamectl --transient set-hostname "bridgething-$SHORT_SERIAL" 2>/dev/null || true
+
+# Reload avahi so it republishes services under the new hostname.
+# Non-fatal: avahi may not be running yet on first boot.
+if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+    systemctl reload avahi-daemon || true
+fi

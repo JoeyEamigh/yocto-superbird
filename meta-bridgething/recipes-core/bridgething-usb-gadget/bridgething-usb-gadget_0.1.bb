@@ -3,12 +3,14 @@ DESCRIPTION = "Configures a single-config composite USB-gadget on the \
 Superbird's DWC2 peripheral controller at boot. The configuration carries \
 three functions: RNDIS (Microsoft OS descriptors steer Windows to its inbox \
 driver), CDC-ECM (Linux/macOS/Win10+ inbox), and FunctionFS-backed ADB \
-(adbd writes the descriptors before the UDC bind). The two network \
-interfaces are bridge ports under usb-br0 so traffic flows through whichever \
-one the host activated; systemd-networkd runs an internal DHCP server on \
-the bridge handing out 10.42.1.10-17 to the host while the device is at \
-10.42.1.2/24. Plug-and-play across all three OSes with adb shell available \
-as a recovery channel even when networking is broken."
+(adbd writes the descriptors before the UDC bind). The boot script derives \
+a /29 subnet from the device serial-sha (so two Car Things on one host \
+land in disjoint subnets); the device IP is `10.42.1.<offset+2>` for RNDIS \
+and `10.42.0.<offset+2>` for ECM, and systemd-networkd hands out DHCP \
+leases inside the same /29. The avahi service published from the bridgething \
+image announces `bridgething.local` (auto-suffixed when two devices race). \
+Plug-and-play across all three OSes with adb shell available as a recovery \
+channel even when networking is broken."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

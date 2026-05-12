@@ -2,7 +2,7 @@
 Name=uecm*
 
 [Network]
-Address=10.42.1.2/24
+Address=10.42.0.2/29
 DHCPServer=yes
 LinkLocalAddressing=no
 IPv6AcceptRA=no
@@ -11,8 +11,8 @@ ConfigureWithoutCarrier=yes
 EmitLLDP=no
 
 [DHCPServer]
-PoolOffset=10
-PoolSize=8
+PoolOffset=3
+PoolSize=4
 EmitDNS=no
 EmitNTP=no
 EmitRouter=no

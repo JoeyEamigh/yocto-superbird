@@ -31,7 +31,7 @@
 set -euo pipefail
 
 PORT="${1:-9223}"
-HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+HOST="${SUPERBIRD_HOST:-bridgething.local}"
 
 # -N: no remote command (just forward)
 # -T: no pseudo-tty

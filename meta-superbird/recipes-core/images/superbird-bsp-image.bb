@@ -2,10 +2,13 @@ SUMMARY = "Superbird BSP-only image - kernel + busybox + SSH"
 DESCRIPTION = "Smallest flashable image for the Spotify Car Thing. \
 Mainline v6.19 kernel with the BSP patches (panel, BT, touchscreen, \
 rotary, ALS, pinctrl), busybox userspace, openssh, and the \
-USB-CDC-ECM gadget so the device is reachable at 10.42.1.2 over the \
-USB-C cable. No bridgething daemon, no chromium, no Cog. Useful as \
-a BSP-bringup target, a kernel-iteration target, or a base for any \
-non-bridgething userspace flashed onto Superbird hardware. \
+USB-CDC-ECM gadget so the device is reachable at a per-serial /29 in \
+10.42.1.x over the USB-C cable. No mDNS in this image - the IP \
+varies per serial and callers must know it (see fw_printenv or the \
+gadget script). The bridgething dev/prod images add avahi for \
+bridgething.local resolution. No bridgething daemon, no chromium, no \
+Cog. Useful as a BSP-bringup target, a kernel-iteration target, or a \
+base for any non-bridgething userspace flashed onto Superbird hardware. \
 \
 Same partition geometry, same flash mechanic, and same OTA shape as \
 the bridgething images - just with the application userspace stripped \

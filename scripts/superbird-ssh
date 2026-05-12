@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Convenience wrapper for SSH into the Superbird via the USB-gadget link.
+# Defaults to mDNS (bridgething.local), which the device publishes via
+# avahi-daemon. Per-serial subnet derivation in bridgething-usb-gadget.sh
+# means the raw IP differs per device, so mDNS is the right default - it
+# resolves to whichever subnet this device landed in. For multi-device
+# hosts where bare "bridgething.local" would race-resolve, override with
+# SUPERBIRD_HOST=bridgething-<short-serial>.local.
+#
 # Uses /dev/null known_hosts because reflashes regenerate the device's host
 # keys. The device side is a dev image with debug-tweaks (passwordless root),
-# so StrictHostKeyChecking=no is intentional here — we trust the private USB pipe.
+# so StrictHostKeyChecking=no is intentional here - we trust the private USB pipe.
 set -euo pipefail
 
-HOST=${SUPERBIRD_HOST:-10.42.1.2}
+HOST=${SUPERBIRD_HOST:-bridgething.local}
 
 exec ssh \
     -o UserKnownHostsFile=/dev/null \

@@ -36,7 +36,7 @@ if [ ! -e "$LOCAL" ]; then
     exit 1
 fi
 
-HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+HOST="${SUPERBIRD_HOST:-bridgething.local}"
 DEST="/var/bridgething/webapps/${NAME}"
 
 # Trailing slash on src + no trailing slash on dest means "copy contents

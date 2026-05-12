@@ -17,8 +17,9 @@
 #                   [--url ws://...]
 #
 # Env:
-#   SUPERBIRD_HOST   device IP (default 10.42.1.2; only used when
-#                    --url is not supplied)
+#   SUPERBIRD_HOST   device host (default bridgething.local mDNS; only
+#                    used when --url is not supplied). For multi-device
+#                    hosts pass bridgething-<short-serial>.local.
 
 set -euo pipefail
 
@@ -58,7 +59,7 @@ esac
 [ -f "$SWU" ] || { echo "[ota] swu not found: $SWU" >&2; exit 1; }
 [ -f "$ZCK" ] || { echo "[ota] zck not found: $ZCK" >&2; exit 1; }
 
-HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+HOST="${SUPERBIRD_HOST:-bridgething.local}"
 : "${URL:=ws://${HOST}:8892/}"
 
 echo "[ota] swu  = $(basename "$SWU") ($(du -h "$SWU" | cut -f1))"

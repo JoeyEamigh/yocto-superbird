@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-HOST="${SUPERBIRD_HOST:-10.42.1.2}"
+HOST="${SUPERBIRD_HOST:-bridgething.local}"
 
 exec ssh \
     -o UserKnownHostsFile=/dev/null \
