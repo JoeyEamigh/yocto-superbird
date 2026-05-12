@@ -1,0 +1,29 @@
+cast_shell: gate UI-DevTools on the explicit switch only
+
+cast_shell built with is_castos=true defaults BUILD_ENG. The default
+BUILD_ENG path unconditionally starts the UI-DevTools server on port
+9223. That collides with the page DevTools bind that the kiosk
+launcher needs at 9223.
+
+Gate UI-DevTools on the --enable-ui-devtools switch only so a user has
+to opt in; otherwise the port stays free for page DevTools.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/cast_browser_main_parts.cc
++++ b/chromecast/browser/cast_browser_main_parts.cc
+@@ -605,9 +605,9 @@
+   // Start UI devtools if this is a dev device or explicitly enabled.
+   // Note that this must happen before the window tree host is created by the
+   // window manager.
+-  auto build_type = CreateSysInfo()->GetBuildType();
+-  if (CAST_IS_DEBUG_BUILD() || build_type == CastSysInfo::BUILD_ENG ||
+-      ::ui_devtools::UiDevToolsServer::IsUiDevToolsEnabled(
++  // Gate purely on the explicit switch; UI-DevTools' default port 9223
++  // collides with our kiosk's page DevTools bind otherwise.
++  if (::ui_devtools::UiDevToolsServer::IsUiDevToolsEnabled(
+           ::ui_devtools::switches::kEnableUiDevTools)) {
+     // Starts the UI Devtools server for browser Aura UI
+     ui_devtools_ =

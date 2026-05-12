@@ -1,12 +1,24 @@
 #!/bin/sh
-# bridgething-chromium-launch - exec chromium under weston as a kiosk.
+# bridgething-chromium-launch - exec cast_shell under weston as a kiosk.
+#
+# The kiosk runs cast_shell, the Chromecast Receiver content embedder
+# (chromium 147 chromecast/ build target). We ship cast_shell as
+# /usr/lib/chromium/chromium-bin from the chromium-ozone-wayland
+# recipe's cast-shell PACKAGECONFIG; the binary is materially smaller
+# than chrome (~145 MB stripped vs ~273 MB), which is the fix for the
+# squashfs page-fault storm under memory pressure that produced
+# 9-second cold-of-kind animation latencies on this device.
 #
 # Sourced env file at /etc/default/bridgething-kiosk lets sysadmins
 # (or, more commonly, this dev) override BRIDGETHING_KIOSK_URL and
-# BRIDGETHING_KIOSK_EXTRA without rebuilding the image. Default URL is
-# the bridgething daemon's modern HTTP/WS listen on port 8891.
+# BRIDGETHING_KIOSK_EXTRA without rebuilding the image. Default URL
+# is the bridgething daemon's modern HTTP/WS listen on port 8891.
 #
-# CDP is unconditionally on at 9223. chromium ≥ M111 silently ignores
+# We cd into /usr/lib/chromium before exec so cast_shell's resource
+# loader finds its paks (assets/cast_shell.pak, chromecast_locales/
+# *.pak, icudtl.dat, snapshot_blob.bin) relative to cwd.
+#
+# CDP is unconditionally on at 9223. chromium >= M111 silently ignores
 # --remote-debugging-address=<non-localhost> (Google removed the bind-
 # elsewhere path for security), so the listener is always 127.0.0.1.
 # The host-side `bridgething-cdp` helper opens an SSH port-forward to
@@ -16,10 +28,10 @@
 # the tunnel must use the SAME port number on the host so that when
 # chrome://inspect on the dev host parses those URLs and tries to
 # open a DevTools session, the ws://127.0.0.1:9223/... target lands
-# back through the tunnel onto the device. With matching ports the
-# announced URL is reachable from the dev host as-is. As a side
-# benefit, this avoids colliding with a desktop chromium that
-# typically owns 9222 itself.
+# back through the tunnel onto the device. As a side benefit, this
+# avoids colliding with a desktop chromium that typically owns 9222
+# itself. cast_shell's BUILD_ENG default UI-DevTools squat on 9223
+# is gated off by patch 0003 in the chromium bbappend.
 #
 # --remote-allow-origins=* is required because chromium rejects
 # DevTools WS upgrades from non-localhost origins by default
@@ -28,40 +40,28 @@
 # set by the *initiating page*, not the TCP destination, so the
 # tunnel does NOT make the origin check pass on its own.
 #
-# --use-angle=gles overrides the chromium /usr/bin/chromium wrapper's
-# default --use-angle=gles-egl. The wrapper's value is INVALID - chromium
-# 147 only accepts (default|gles|vulkan|swiftshader). With gles-egl
-# silently rejected, chromium falls back to gl=disabled and the GPU
-# process exits at startup with "(gl=none,angle=none) not found in
-# allowed implementations". With gles, ANGLE bridges to Mesa's libGLESv2
-# → libgallium → Panfrost → Mali-G31. The chromium command line is
-# last-wins for --use-angle, so this override after the wrapper's flags
-# is what actually takes effect.
+# --use-angle=gles routes through Mesa's libGLESv2 -> libgallium ->
+# Panfrost -> Mali-G31. chromium 147 only accepts (default | gles |
+# vulkan | swiftshader); the chromium-wrapper's gles-egl value from
+# meta-chromium's kiosk-mode PACKAGECONFIG is INVALID and would
+# silently fall back to gl=disabled. We exec cast_shell directly
+# (no wrapper) so we control the flag set wholesale.
 #
 # --single-process collapses every utility process (network, storage,
 # on-device-model, GPU) and the renderer into the browser process.
-# Chromium docs warn this is "not recommended", but for a single-site
-# kiosk running an in-house webapp the renderer-crash isolation it
-# trades away is theatre - the renderer code path is mature, the JS
-# is ours, and we only ever have one tab. The wins are concrete:
+# Trade-offs (well-reasoned for this kiosk):
 #   1. Eliminates the network-service-as-utility-process Mojo IPC
-#      heartbeat. Under cold-boot pressure, that heartbeat would
-#      time out and chromium would mark the in-flight navigation as
-#      failed, leaving the tab parked on about:blank with no retry.
-#      With network running in-process there is no IPC to time out.
+#      heartbeat that previously timed out under cold-boot pressure
+#      and parked the tab on about:blank. (With cast_shell's smaller
+#      binary memory pressure is gone, but single-process is still
+#      simpler.)
 #   2. ~70 MB saved from per-process libc/page-table duplication.
-#      On 426 MB of RAM that is meaningful headroom.
-#   3. No more --renderer-process-limit=1 / --process-per-site
-#      complexity - those become no-ops under single-process.
+#   3. No --renderer-process-limit=1 / --process-per-site complexity.
+# Renderer-crash isolation is theatre on a single-site kiosk; only
+# one tab, code is ours.
 #
 # --num-raster-threads=4 lets the raster thread pool fill all four
-# A53 cores. The chromium default for low-memory devices is 2.
-#
-# --enable-low-end-device-mode is INTENTIONALLY OMITTED. It would
-# disable GPU rasterization (forcing CPU raster, slower) and put V8
-# into lite-mode (interpreter, no JIT for many functions). On a stack
-# with Panfrost working and ~150 MB available memory after the
-# single-process savings, the perf hit dwarfs the memory savings.
+# A53 cores.
 #
 # --js-flags is QUOTED. Without quotes, the shell word-splits the
 # value and only the first inner flag reaches V8 - the prior version
@@ -72,129 +72,88 @@
 # Niceness control lives in bridgething-chromium-kiosk.service via
 # CapabilityBoundingSet=~CAP_SYS_NICE + LimitNICE=20. Chromium calls
 # setpriority(-8) on its UI / IO / GPU threads internally; on 4x A53
-# those at -8 preempt kswapd and the squashfs-percpu decompression
-# workers - the very kernel work chromium needs to make progress on
-# its own faults. The unit drops the cap so setpriority returns
-# EPERM and the threads stay at nice=0.
+# those at -8 preempt kswapd and any other kernel work in the
+# critical path of the renderer's own page faults. Stripping
+# CAP_SYS_NICE makes setpriority return EPERM and the threads stay
+# at nice=0.
 #
 # --user-data-dir lives on /var/cache (the data partition) so V8's
 # Code Cache (parsed bytecode + JIT artifacts) and the HTTP disk
-# cache survive reboots. With these on tmpfs (the previous default
-# of /run/chromium-data), every boot was a cold cache for V8 + every
-# webapp asset, and the first paint after boot was always the slow
-# one. Persisting them turns first-paint-after-boot into roughly the
-# speed of a warm-cache navigation. The data partition is shared
-# between A/B slots so the cache survives OTA + bootslot swap; the
-# directory itself is created on first boot by the unit's
-# CacheDirectory= directive.
+# cache survive reboots. Persisting them turns first-paint-after-
+# boot into roughly the speed of a warm-cache navigation. The data
+# partition is shared between A/B slots so the cache survives OTA +
+# bootslot swap; the directory itself is created on first boot by
+# the unit's CacheDirectory= directive.
 #
 # --disk-cache-size=50 MiB caps the HTTP cache. Vite's webapp output
-# uses content-hashed asset filenames so stale-cache-after-deploy is
-# a non-issue: a new build produces new filenames, the old ones are
-# unreferenced and get LRU-evicted.
+# uses content-hashed asset filenames so stale-cache-after-deploy
+# is a non-issue: a new build produces new filenames, the old ones
+# are unreferenced and get LRU-evicted.
 #
 # --enable-zero-copy switches GPU texture upload from the default
 # "CPU-side staging buffer + memcpy into GPU memory" path to a
 # direct DMA buffer the GPU reads in place. On Mali-G31 / Panfrost
 # CPU and GPU share physical RAM, so the staging copy is pure waste.
-# This saves one memcpy per uploaded raster tile and is one of the
-# easier wins on shared-memory ARM SoCs.
-#
-# --password-store=basic skips chromium's dbus probe for a
-# gnome-keyring / kwallet provider on startup. Neither exists on
-# the kiosk image, so the lookup always fails and the only effect
-# is a few ms of startup latency + spurious dbus traffic. `basic`
-# (in-memory store) is the explicit no-op that bypasses the probe.
-#
-# --no-pings drops HTML hyperlink-auditing `<a ping>` requests.
-# Useless for a single-site kiosk; non-zero CPU + network for
-# nothing.
 #
 # --autoplay-policy=no-user-gesture-required permits HTMLMediaElement
 # autoplay and Web Audio API audio context resume without a synthetic
-# user gesture. The device has no audio output, but webapps doing
-# visualizations through Web Audio API still need an unsuspended
-# AudioContext - this lifts the M66+ default that requires a user
-# tap before either is permitted.
+# user gesture. The device has no audio output but webapps using Web
+# Audio API for visualizations still need an unsuspended
+# AudioContext.
 #
 # Egress lockdown. The SOCKS proxy on 127.0.0.1:1080 tunnels webapp
 # traffic over Bluetooth (RFCOMM) to the paired phone, so every byte
 # chromium initiates on its own competes with the webapp for that
-# pipe. The goal is zero chromium-originated network activity - only
-# the active webapp's deliberate fetches should leave the device.
+# pipe. cast_shell already excludes most of the chrome-specific
+# warmup paths (Google services, variations seed, GAIA, etc.); the
+# --disable-background-networking + --disable-component-update +
+# --disable-features=SafeBrowsing,DnsOverHttps,FedCm,AcceptCHFrame,
+# Reporting belt-and-suspenders kill any remaining background egress
+# inherited from the chromium content/ tree.
 #
-# --disable-background-networking was the historical kill for all of
-# this but chromium has progressively moved subsystems out from under
-# its umbrella. The four subsystems observed leaking on M147 each
-# need an explicit kill, by URL-void where possible:
-#
-#   accounts.google.com         GAIA / IdentityManager warmup
-#     --disable-gaia-services + --gaia-url=
-#   android.clients.google.com  GCM checkin + MCS + registration
-#     --gcm-checkin-url= --gcm-mcs-endpoint= --gcm-registration-url=
-#   clients2.google.com         component updater manifest poll
-#     --component-updater=url-source=...
-#     (--disable-component-update only blocks install, not the poll)
-#   www.google.com              variations seed fallback
-#     --variations-server-url= --variations-insecure-server-url=
-#     --disable-field-trial-config
-#
-# All voided URLs point at http://127.0.0.1:1/. Chromium auto-bypasses
-# loopback for the SOCKS proxy (M72+), so these requests never reach
-# bridgething's proxy - they hit a closed local TCP port and RST
-# immediately, the subsystem logs a transport failure and backs off.
-# This is strictly better than letting bridgething's proxy deny them,
-# which would burn BT airtime on the SOCKS handshake bridgething then
-# rejects, with chromium retrying through the same pipe.
-#
-# Loopback auto-bypass is also why the kiosk URL on 127.0.0.1:8891
-# keeps working unconditionally regardless of any active webapp's
-# net.proxy permission - the bridgething webserver is reached
-# directly, never through the SOCKS path.
-#
-# --disable-domain-reliability and --disable-client-side-phishing-detection
-# kill two more egress paths chromium initiates outside the
-# disable-background-networking umbrella; neither has a documented
-# URL override so they have to be killed by switch.
-#
-# The --disable-features list trims chromium subsystems that don't
-# apply to a 426 MB single-site offline kiosk. Each is feature-flag-
-# gated rather than build-time-conditional, so disabling at launch
-# is the only way to skip the init cost. Grouped by reason:
-#   no audio output / playback surface:
-#     GlobalMediaControls, MediaSessionService
-#   no Cast / DIAL discovery:
-#     MediaRouter, DialMediaRouteProvider
-#   no cloud lookups for translate / autofill / hints:
-#     Translate, AutofillServerCommunication, OptimizationHints,
-#     OptimizationGuideModelDownloading
-#   not a content surface:
-#     InterestFeedContentSuggestions
-#   no in-kiosk back/forward:
-#     BackForwardCache
-#   Windows-only flag, no-op on Linux:
-#     CalculateNativeWinOcclusion
-#   egress lockdown belt-and-suspenders. No documented URL override,
-#   so killed at the feature-flag layer where future milestones can't
-#   silently re-enable them:
-#     SafeBrowsing, NetworkTimeServiceQuerying, DnsOverHttps, FedCm,
-#     AcceptCHFrame, Reporting
+# Loopback auto-bypass keeps the kiosk URL on 127.0.0.1:8891 working
+# unconditionally regardless of any active webapp's net.proxy
+# permission - the bridgething webserver is reached directly, never
+# through the SOCKS path.
 
 set -eu
 
 BRIDGETHING_KIOSK_URL="${BRIDGETHING_KIOSK_URL:-http://127.0.0.1:8891/}"
 BRIDGETHING_KIOSK_EXTRA="${BRIDGETHING_KIOSK_EXTRA:-}"
+BRIDGETHING_KIOSK_SINGLE_PROCESS="${BRIDGETHING_KIOSK_SINGLE_PROCESS:-1}"
 
+# /etc/default/bridgething-kiosk is the image default (ro on squashfs
+# / ext4 rootfs). /opt/bridgething/kiosk-env is the writable override
+# on the settings-partition overlay (bind-mounted by the
+# bridgething-opt-overlay service; survives bootslot swap + OTA). The
+# override file is sourced last so it wins; absent file is fine.
 if [ -r /etc/default/bridgething-kiosk ]; then
     # shellcheck disable=SC1091
     . /etc/default/bridgething-kiosk
+fi
+if [ -r /opt/bridgething/kiosk-env ]; then
+    # shellcheck disable=SC1091
+    . /opt/bridgething/kiosk-env
 fi
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/weston}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 
-exec /usr/bin/chromium \
-    --kiosk \
+# --single-process is the kiosk default; multi-process (zygote CoW for
+# renderer + GPU + utility) is opt-in via /etc/default/bridgething-kiosk
+# so the bench matrix can flip between cells with just a sed + service
+# restart. Empty value when SINGLE_PROCESS=0; ${SINGLE_PROCESS_FLAG}
+# expansion in the exec line then collapses to nothing.
+if [ "${BRIDGETHING_KIOSK_SINGLE_PROCESS}" = "1" ]; then
+    SINGLE_PROCESS_FLAG=--single-process
+else
+    SINGLE_PROCESS_FLAG=
+fi
+
+cd /usr/lib/chromium
+
+# shellcheck disable=SC2086
+exec ./chromium-bin \
     --no-first-run \
     --no-default-browser-check \
     --no-sandbox \
@@ -210,7 +169,7 @@ exec /usr/bin/chromium \
     --disable-pinch \
     --overscroll-history-navigation=0 \
     --force-color-profile=srgb \
-    --single-process \
+    ${SINGLE_PROCESS_FLAG} \
     --num-raster-threads=4 \
     --enable-zero-copy \
     --password-store=basic \
@@ -219,21 +178,7 @@ exec /usr/bin/chromium \
     --js-flags="--max-old-space-size=192 --max-semi-space-size=16 --no-lazy" \
     --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting \
     --disable-component-update \
-    --component-updater=url-source=http://127.0.0.1:1/ \
     --disable-background-networking \
-    --disable-sync \
-    --disable-default-apps \
-    --disable-extensions \
-    --disable-gaia-services \
-    --gaia-url=http://127.0.0.1:1/ \
-    --gcm-checkin-url=http://127.0.0.1:1/ \
-    --gcm-mcs-endpoint=http://127.0.0.1:1/ \
-    --gcm-registration-url=http://127.0.0.1:1/ \
-    --variations-server-url=http://127.0.0.1:1/ \
-    --variations-insecure-server-url=http://127.0.0.1:1/ \
-    --disable-field-trial-config \
-    --disable-domain-reliability \
-    --disable-client-side-phishing-detection \
     --user-data-dir=/var/cache/bridgething/chromium \
     --proxy-server=socks5://127.0.0.1:1080 \
     --remote-debugging-port=9223 \

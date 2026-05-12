@@ -1,9 +1,9 @@
 # Bridgething prod OTA - A/B slot, delta system.img + raw boot.img.
 #
 # system.img is the rootfs image under whatever extension
-# SUPERBIRD_ROOTFS_TYPE selected (squashfs-zst on prod). swupdate
-# treats it as opaque bytes; the kernel detects the filesystem from
-# the superblock magic at mount time.
+# SUPERBIRD_ROOTFS_TYPE selected (ext4 on prod, squashfs-lz4 on
+# dev). swupdate treats it as opaque bytes; the kernel detects the
+# filesystem from the superblock magic at mount time.
 #
 # `system.img.zck.zckheader` is a tiny (~1% of the rootfs) zchunk
 # index. The delta handler parses it, hashes the chunks of the

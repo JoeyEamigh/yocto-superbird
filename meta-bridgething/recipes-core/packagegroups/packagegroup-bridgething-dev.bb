@@ -20,7 +20,6 @@ RDEPENDS:${PN} = " \
     \
     cog \
     wpewebkit \
-    chromium-ozone-wayland-chromedriver \
     \
     weston-examples \
     weston-vnc-backend \

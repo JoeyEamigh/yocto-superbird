@@ -1,0 +1,31 @@
+cast_shell: bind IPv4 loopback for page DevTools
+
+The default IPv6AllZeros dual-stack bind silently leaves the http
+handler thread without an accept loop on this kernel/glibc
+combination: content/'s DevTools handler logs "Cannot start http
+server" and the LISTEN socket sits unanswered.
+
+Chromium >= M111 enforces localhost-only for /json/* anyway, so an
+IPv4 localhost bind is functionally equivalent for our use case and
+reliably serves CDP requests through the SSH tunnel from the host.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/devtools/remote_debugging_server.cc
++++ b/chromecast/browser/devtools/remote_debugging_server.cc
+@@ -118,7 +118,12 @@
+   return std::unique_ptr<content::DevToolsSocketFactory>(
+       new UnixDomainServerSocketFactory(socket_name));
+ #else
+-  net::IPEndPoint endpoint(net::IPAddress::IPv6AllZeros(), port);
++  // bridgething patch: bind IPv4 loopback only. The original IPv6AllZeros
++  // dual-stack bind silently leaves the http handler thread without an
++  // accept loop on this kernel/glibc combination (content/'s DevTools
++  // handler logs "Cannot start http server" and the LISTEN socket sits
++  // unanswered). Chromium ≥ M111 enforces localhost-only for /json/* anyway.
++  net::IPEndPoint endpoint(net::IPAddress::IPv4Localhost(), port);
+   return std::unique_ptr<content::DevToolsSocketFactory>(
+       new TCPServerSocketFactory(endpoint));
+ #endif

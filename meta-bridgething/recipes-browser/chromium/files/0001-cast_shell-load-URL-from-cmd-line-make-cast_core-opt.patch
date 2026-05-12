@@ -1,0 +1,56 @@
+cast_shell: load URL from cmd-line, make cast_core runtime optional
+
+Upstream CoreCastService::StartInternal unconditionally tries to bring
+up the Cast Core runtime gRPC server and terminates the process on
+failure. That requires a live Cast Platform Service on the system bus,
+which does not exist on this device.
+
+Two changes make cast_shell usable as a generic single-page content
+embedder on Linux without breaking the cast_core path when both
+switches are supplied:
+
+  1. Call the parent CastServiceSimple::StartInternal first so the
+     last positional command-line argument is loaded via
+     GetStartupURL().
+  2. Only attempt runtime_service_->Start() when both
+     --cast-core-runtime-id and --runtime-service-path are present;
+     absent those switches, leave the shell running with whatever URL
+     was loaded.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/cast_core/runtime/browser/cast_runtime_content_browser_client.cc
++++ b/chromecast/cast_core/runtime/browser/cast_runtime_content_browser_client.cc
+@@ -7,6 +7,7 @@
+ #include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ref.h"
++#include "base/process/process.h"
+ #include "chromecast/browser/cast_content_browser_client.h"
+ #include "chromecast/browser/service/cast_service_simple.h"
+ #include "chromecast/cast_core/cast_core_switches.h"
+@@ -36,8 +37,20 @@
+ 
+   // CastServiceSimple overrides:
+   void StartInternal() override {
+-    if (!runtime_service_->Start().ok()) {
+-      base::Process::TerminateCurrentProcessImmediately(1);
++    // bridgething patch: load the URL from the command line first (the
++    // parent's StartInternal does it via GetStartupURL()) so cast_shell
++    // can be used as a single-page content embedder on Linux without
++    // Cast Platform Service. Then only try to bring up the cast_core
++    // runtime gRPC server if both --cast-core-runtime-id and
++    // --runtime-service-path were supplied; absent those switches, skip
++    // the runtime entirely instead of terminating the process.
++    CastServiceSimple::StartInternal();
++    auto* cl = base::CommandLine::ForCurrentProcess();
++    if (cl->HasSwitch(cast::core::switches::kCastCoreRuntimeId) &&
++        cl->HasSwitch(cast::core::switches::kRuntimeServicePath)) {
++      if (!runtime_service_->Start().ok()) {
++        base::Process::TerminateCurrentProcessImmediately(1);
++      }
+     }
+   }
+ 

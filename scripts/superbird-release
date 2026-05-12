@@ -85,8 +85,18 @@ upload_variant() {
   channel="$(variant_to_channel "$variant")"
 
   local swu="$DEPLOY/bridgething-update-${variant}-superbird.swu"
-  local zck="$DEPLOY/bridgething-${variant}-image-superbird.squashfs-lz4.zck"
   local zip="$DEPLOY/bridgething-${variant}-image-superbird-flashthing.zip"
+
+  # SUPERBIRD_ROOTFS_TYPE is per-image (prod=ext4, dev=squashfs-lz4 as
+  # of 2026-05-12). Resolve the .zck artifact by globbing rather than
+  # hardcoding the fstype.
+  local zck
+  zck="$(ls "$DEPLOY/bridgething-${variant}-image-superbird".*.zck 2>/dev/null | grep -v zckheader | head -n1)"
+
+  if [[ -z "$zck" ]]; then
+    echo "[release] no .zck artifact found for variant $variant under $DEPLOY; run 'just build' first" >&2
+    exit 1
+  fi
 
   for f in "$swu" "$zck" "$zip"; do
     if [[ ! -e "$f" ]]; then

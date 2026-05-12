@@ -52,39 +52,45 @@ IMAGE_INSTALL += " \
     kernel-module-ge2d \
 "
 
-# Stock AML MPT geometry — works for both prod and dev now that
-# squashfs makes the 516 MB slot enough for a kitchen-sink dev
-# install (272 MB compressed). 256 MB settings + ~2 GB data is the
-# stock layout u-boot already understands.
+# Stock AML MPT geometry — works for both prod and dev. 516 MB
+# system slot each, 256 MB settings, ~2 GB data. u-boot already
+# understands this layout from the stock partition table.
 SUPERBIRD_PART_TABLE = "system_a:0x10600000:0x2040b000,system_b:0x3120b000:0x2040b000,settings:0x52e16000:0x10000000,data:0x63616000:0x859ea000"
 SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
 SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
 SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
 
-# Squashfs as the rootfs, lz4 compression with the HC encoder. lz4
-# decompresses at ~1.5-2 GB/s on Cortex-A53 - 3-4x faster than zstd
-# at any level - which is what dominates user-perceived stalls under
-# memory pressure: every code page evicted from the file cache costs
-# a squashfs fault-in. -Xhc enables high-compression mode for the
-# encoder; the resulting stream uses the same wire format as plain
-# lz4 so the kernel decompressor needs no special handling, and
-# decompress speed is identical (only the encoder works harder for
-# better ratio). -b 1M = 1 MiB squashfs blocks; good locality for
-# chromium-bin's mmap'd random-access reads. -no-xattrs skips the
-# xattr table (we don't ship SELinux/POSIX-ACL labels). -all-root
-# squashes permissions to root:root since the rootfs is single-user
-# anyway.
-SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
+# Rootfs type is overridable per-image. Default is squashfs-lz4
+# (chosen for fast lz4 decompress on Cortex-A53). The prod image
+# overrides to ext4 ro because cast_shell shrinks the rootfs enough
+# that prod fits a 516 MiB ext4 partition with headroom, and ext4 ro
+# avoids the squashfs decompress threads' sustained PSI memory
+# pressure on cold M-key (200-400 ms win measured on this hardware).
+# Dev keeps squashfs because its kitchen-sink install doesn't fit.
+#
+# Per-fstype EXTRA_IMAGECMD:
+#   squashfs-lz4 — -b 1M = 1 MiB blocks (good locality for chromium-
+#     bin mmap reads). -Xhc = high-compression encoder; same lz4 wire
+#     format the kernel already decompresses at ~1.5-2 GB/s on A53.
+#     -no-xattrs skips the xattr table (no SELinux / POSIX-ACL
+#     labels). -all-root squashes perms to root:root.
+#   ext4 — -i 16384 = one inode per 16 KiB (~30K inodes for a 500
+#     MiB FS, comfortable). -m 0 = drop the 5% superuser reserve
+#     (~25 MiB on a 516 MiB FS, we don't write to the rootfs at
+#     runtime). -O ^has_journal disables ext4 journaling (rootfs
+#     mounts ro, journal is pure overhead). 64-bit + huge_file off
+#     since rootfs is well under 2 TB.
+SUPERBIRD_ROOTFS_TYPE ??= "squashfs-lz4"
 EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
+EXTRA_IMAGECMD:ext4 = "-i 16384 -m 0 -O ^has_journal -O ^huge_file"
 
 # Drop the distro-default ext4 + tar.bz2. Both images get zchunk
 # derivatives so bridgething-update-{dev,prod}.bb can each build a
 # delta .swu against their respective image. meta-swupdate's
 # image_types_zchunk class adds CONVERSIONTYPES `zck` and
-# `zckheader`; Yocto walks the dotted chain (squashfs-lz4 ->
-# squashfs-lz4.zck -> squashfs-lz4.zck.zckheader) and keeps each
-# intermediate.
-IMAGE_FSTYPES = "squashfs-lz4 squashfs-lz4.zck squashfs-lz4.zck.zckheader"
+# `zckheader`; Yocto walks the dotted chain (<base> ->
+# <base>.zck -> <base>.zck.zckheader) and keeps each intermediate.
+IMAGE_FSTYPES = "${SUPERBIRD_ROOTFS_TYPE} ${SUPERBIRD_ROOTFS_TYPE}.zck ${SUPERBIRD_ROOTFS_TYPE}.zck.zckheader"
 IMAGE_CLASSES += "image_types_zchunk"
 
 # OTA channel + image variant + image version baked into the running

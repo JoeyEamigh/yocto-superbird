@@ -15,10 +15,18 @@ LICENSE = "MIT"
 
 require bridgething-image-base.inc
 
-# Dev-specific auth: passwordless root login via UART + SSH. Prod
-# also runs unauthed (community trust posture; see base inc) but
-# inherits the openssh defaults rather than the explicit overrides.
-IMAGE_FEATURES += "allow-empty-password allow-root-login empty-root-password"
+# Dev-specific debug surface: tools-debug pulls
+# packagegroup-core-tools-debug (gdb + gdbserver + libc-mtrace +
+# strace, ~14 MB) for live debugging of daemon code on-device.
+# post-install-logging spills package-install messages during
+# do_rootfs into the build log, which is useful when iterating on the
+# image but pure noise on a prod build.
+#
+# Auth-related features (empty root password, SSH, serial autologin)
+# are set at distro scope via kas/base.yml's EXTRA_IMAGE_FEATURES so
+# prod gets them too (community trust posture; both images ship
+# intentionally unauthed).
+IMAGE_FEATURES += "tools-debug post-install-logging"
 
 # Dev install extras. The dev packagegroup already RDEPENDS
 # bridgething-weston-init-desktop, so a single packagegroup pull

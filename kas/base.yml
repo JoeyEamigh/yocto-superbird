@@ -81,16 +81,18 @@ local_conf_header:
     RM_WORK_EXCLUDE += "linux-superbird"
     INHERIT += "ccache"
     CCACHE_TOP_DIR = "${TOPDIR}/../ccache"
-    # tools-debug adds gdb / gdbserver / nm-suid for live debugging of
-    # daemon code on the device. serial-autologin-root drops the UART
-    # console straight to a root shell instead of waiting on a getty
-    # login prompt - quality-of-life for the bring-up iteration loop.
-    # read-only-rootfs is intentionally left off the dev image: although
+    # Global IMAGE_FEATURES that both prod and dev want (per the
+    # project's open-auth posture: empty root password + SSH + serial
+    # autologin are intentional, not an oversight). Anything dev-only
+    # (tools-debug, post-install-logging) lives in
+    # meta-bridgething/recipes-core/images/bridgething-dev-image.bb
+    # so prod doesn't pull gdb / gdbserver / strace / libc-mtrace.
+    # read-only-rootfs is intentionally left off both images: although
     # the runtime fstab mounts system_a ro, the image-feature also
     # reorganizes /etc into an overlayfs and bakes runtime state in at
     # build time, which breaks scp-into-/usr/libexec hot-fixing during
-    # iteration. Add it to a future production-image variant instead.
-    EXTRA_IMAGE_FEATURES = "ssh-server-openssh allow-empty-password allow-root-login empty-root-password post-install-logging tools-debug serial-autologin-root"
+    # iteration.
+    EXTRA_IMAGE_FEATURES = "ssh-server-openssh allow-empty-password allow-root-login empty-root-password serial-autologin-root"
     # weston-xwayland pulls pam as a hard dependency; poky's default
     # DISTRO_FEATURES omits it, so add explicitly.
     DISTRO_FEATURES:append = " pam"
