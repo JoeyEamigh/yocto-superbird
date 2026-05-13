@@ -31,9 +31,8 @@ SRC_URI[rollup-arm64-gnu.sha256sum] = "15dacc4a625c90f790c199ebb06e3327baee2f4a2
 SRC_URI:append = " https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.1.tgz;name=esbuild-arm64;unpack=0;subdir=esbuild-arm64"
 SRC_URI[esbuild-arm64.sha256sum] = "70771c9212585cfd1b190465f92dae98d1d3fc4a4fab5cacbef71457ee08e254"
 
-# cast_shell local patches. Three minimal edits in chromecast/ that
-# convert cast_shell into a usable single-page content embedder on this
-# device:
+# cast_shell local patches. Minimal edits in chromecast/ that convert
+# cast_shell into a usable single-page content embedder on this device:
 #
 #   0001: CoreCastService loads the URL from the cmd-line first and
 #         only attempts the cast_core runtime gRPC bring-up when both
@@ -48,14 +47,88 @@ SRC_URI[esbuild-arm64.sha256sum] = "70771c9212585cfd1b190465f92dae98d1d3fc4a4fab
 #         built with is_castos=true defaults BUILD_ENG, and the
 #         BUILD_ENG path unconditionally starts UI-DevTools on port
 #         9223 which collides with the kiosk's page DevTools bind.
+#   0004: ConnectivityChecker swapped for FakeConnectivityChecker (the
+#         in-tree always-connected stub). The real checker hammers
+#         connectivitycheck.gstatic.com/generate_204 every few seconds
+#         and storms the journal with net_error=-105 - this device has
+#         no upstream DNS / direct egress and nothing in the kiosk
+#         path observes Connected() state anyway.
+#   0005: CastContentWindowAura calls SetFullWindowBounds() from
+#         CreateWindow() (right after window_ is bound) instead of
+#         relying solely on DidStartNavigation. Upstream's GrantScreen
+#         Access happens with window_ still null so its
+#         SetFullWindowBounds short-circuits, and DidStartNavigation
+#         only fires once after the WebContentsObserver is attached.
+#         On single-process + immediate LoadUrl the navigation can
+#         outrun the observer and the one resize signal is dropped,
+#         leaving the WebContents child window at 0x0.
+#   0006: CastWindowManagerAura calls PlatformWindow::SetFullscreen
+#         (NOT Maximize - the latter leaves weston-desktop-shell's
+#         panel visible and gives configure(800, 448); fullscreen
+#         unmaps the panel for the toplevel and gives the full
+#         configure(800, 480)).
+#   0007: CastWindowManagerAura's compositor backstop is flipped from
+#         SK_ColorTRANSPARENT to SK_ColorBLACK. Cast's transparency
+#         assumes a hardware video plane below the compositor;
+#         bridgething has none, and with alpha=0 the cc::LayerTree
+#         HostImpl::AppendQuadsToFillScreen early-returns, viz emits
+#         no quads in the first CompositorFrame, and the configure
+#         ack handshake never completes.
+#   0008: Removes {switches::kDisableGpuEarlyInit, ""} from
+#         cast_browser_main_parts.cc kDefaultSwitches. The Cast
+#         default exists for Nest Hub / TV hardware that boots in the
+#         background and only starts the GPU when the user switches
+#         the TV to cast input. On bridgething there is no such
+#         event, and with the switch on, content/browser/browser_
+#         main_loop.cc::CreateStartupTaskRunner sets establish_gpu_
+#         channel = always_uses_gpu = false, leaving viz without a
+#         GPU output surface.
+#   0009: OverlayProcessorOzone::ShouldCreatePrimaryPlane unconditional
+#         true. Upstream chromium 147 gates this on IS_CASTOS and
+#         returns false, on the assumption that Cast hardware owns
+#         its own primary plane through a hardware video plane the
+#         media pipeline drives. On bridgething the cast_shell
+#         renderer is the only producer of output; without this
+#         override the root render pass is never promoted to a
+#         primary plane OverlayCandidate, ScheduleOverlays in
+#         SkiaOutputSurfaceImplOnGpu::PresentFrame is skipped, the
+#         GbmPixmapWayland chain never runs, no CreateDmabufBased
+#         Buffer mojo call reaches WaylandBufferManagerHost, and
+#         CommitOverlays arrives at the host with an empty config
+#         list. WaylandFrameManager records an empty frame, sends
+#         exactly one ack_configure, never attaches a wl_buffer to
+#         the wl_surface, and the kiosk wedges. This is the actual
+#         cause of the GPU compositing wedge that --disable-gpu-
+#         compositing had been working around since 2026-05-12.
+#         Found via differential perfetto trace
+#         (--trace-startup=wayland,viz,gpu): in the wedged build
+#         WaylandBufferManagerHost::CommitOverlays fires but
+#         WaylandBufferManagerHost::CreateDmabufBasedBuffer never
+#         does, and GbmSurfacelessWayland::QueueWaylandOverlayConfig
+#         never fires. Confirmed by reading the chromium 147 source
+#         at components/viz/service/display/overlay_processor_ozone
+#         .cc:501.
 #
-# All three patches touch chromecast/ files only and are no-ops for the
+# The screen-size seed itself (CastScreen primary display) is handled
+# in the launcher via the existing chromecast switches
+# --cast-graphics-width and --cast-graphics-height: CastDisplayConfig
+# urator reads those at startup and seeds the primary display,
+# replacing the 1280x720 fallback. No chromium patch needed for that
+# path.
+#
+# All patches touch chromecast/ files only and are no-ops for the
 # chrome target. They apply cleanly even when cast-shell PACKAGECONFIG
 # is not selected.
 SRC_URI:append = " \
     file://0001-cast_shell-load-URL-from-cmd-line-make-cast_core-opt.patch \
     file://0002-cast_shell-bind-IPv4-loopback-for-page-DevTools.patch \
     file://0003-cast_shell-gate-UI-DevTools-on-switch-only.patch \
+    file://0004-cast_shell-FakeConnectivityChecker-on-bridgething.patch \
+    file://0005-cast_shell-SetFullWindowBounds-in-CreateWindow.patch \
+    file://0006-cast_shell-fullscreen-platform-window-on-init.patch \
+    file://0007-cast_shell-opaque-compositor-background.patch \
+    file://0008-cast_shell-no-disable-gpu-early-init.patch \
+    file://0009-cast_shell-force-primary-plane-on-ozone.patch \
 "
 
 # cast-shell PACKAGECONFIG. Switches the chromium recipe from building

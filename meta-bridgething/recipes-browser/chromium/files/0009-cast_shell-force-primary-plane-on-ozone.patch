@@ -1,0 +1,67 @@
+Force OverlayProcessorOzone::ShouldCreatePrimaryPlane to true on
+cast_shell.
+
+The IS_CASTOS guard in upstream chromium 147 returns false from
+ShouldCreatePrimaryPlane, on the assumption that Chromecast TV / Nest
+Hub style hardware owns its own primary plane through a hardware video
+plane the cast media pipeline drives. On bridgething the cast_shell
+renderer is the only producer of output, weston is the compositor, and
+there is no separate hardware primary plane.
+
+Returning false means the root render pass is never promoted to a
+primary plane OverlayCandidate in OverlayProcessorUsingStrategy::
+ProcessForOverlays. The candidate list stays empty, SkiaOutputSurface
+ImplOnGpu::PresentFrame skips ScheduleOverlays, and SkiaOutput
+DeviceBufferQueue::Present commits the backbuffer through
+presenter_->Present without any ScheduleOverlayPlane call ever
+running. GbmPixmapWayland::CreateDmabufBasedWlBuffer therefore never
+fires, the WaylandBufferManagerHost has no buffer backings registered
+for any buffer_id, and the CommitOverlays mojo call that does reach
+the host carries an empty config list. WaylandFrameManager records
+an empty frame, never plays it back, and the wl_surface gets exactly
+one ack_configure with no wl_buffer.attach ever following.
+
+Patches 0006 (set_fullscreen instead of set_maximized), 0007 (opaque
+black compositor backstop instead of cast's SK_ColorTRANSPARENT), and
+0008 (drop kDisableGpuEarlyInit so the GPU channel comes up at
+startup) were all real bugs that needed fixing, but the actual cause
+of the GPU compositing wedge on this device was this primary plane
+gate.
+
+Force-returning true makes OverlayProcessorOzone behave like the
+non-CastOS path: the root render pass becomes a primary plane,
+InsertPrimaryPlane adds it to the candidate list, ScheduleOverlays
+fires, GbmPixmapWayland creates the wl_buffer via CreateDmabufBased
+WlBuffer, QueueWaylandOverlayConfig populates the GbmSurfacelessWay
+land PendingFrame, MaybeSubmitFrames sends a CommitOverlays with a
+real config, and the WaylandFrameManager attaches and commits the
+buffer to the wl_surface. The whole chain unwedges.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+diff --git a/components/viz/service/display/overlay_processor_ozone.cc b/components/viz/service/display/overlay_processor_ozone.cc
+--- a/components/viz/service/display/overlay_processor_ozone.cc
++++ b/components/viz/service/display/overlay_processor_ozone.cc
+@@ -499,11 +499,16 @@
+ }
+ 
+ bool OverlayProcessorOzone::ShouldCreatePrimaryPlane() const {
+-#if BUILDFLAG(IS_CASTOS)
+-  return false;
+-#else
++  // Upstream returns false on IS_CASTOS because Chromecast TV / Nest Hub
++  // hardware provides its own primary plane through a video plane the cast
++  // media pipeline owns. On bridgething there is no such hardware: the
++  // cast_shell renderer is the only producer of output, so the root render
++  // pass must be promoted to a primary plane overlay or no buffer ever
++  // reaches GbmSurfacelessWayland / WaylandBufferManagerHost. Without this
++  // override, the wayland xdg_toplevel acks the first configure but never
++  // sees wl_buffer.attach because the entire ScheduleOverlayPlane chain is
++  // dead on this build.
+   return true;
+-#endif
+ }
+ 
+ bool OverlayProcessorOzone::SetNativePixmapForCandidate(

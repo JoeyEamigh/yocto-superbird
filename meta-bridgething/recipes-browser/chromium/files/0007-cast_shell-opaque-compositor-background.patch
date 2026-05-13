@@ -1,0 +1,87 @@
+cast_shell: keep the aura compositor background opaque
+
+Without this patch, the wl_surface state machine on cast_shell wedges
+with GPU compositing enabled: weston sends xdg_surface.configure and
+chromium never sends ack_configure because viz never produces a
+wl_buffer the wayland host can record. The workaround was
+--disable-gpu-compositing in the launcher, which routes the final
+composite through Skia software and costs ~10-29% of one A53 core for
+animation-heavy workloads. This patch removes the wedge so GPU
+compositing can be left on.
+
+Root cause: chromecast/graphics/cast_window_manager_aura.cc sets the
+aura compositor's background colour to SK_ColorTRANSPARENT
+unconditionally with the comment "Allow seeing through to the hardware
+video plane". That plane only exists on cast hardware with a real HW
+video underlay; bridgething is a kiosk over wayland with no video
+underlay path, so the transparency only ever serves to wedge frame
+production.
+
+The mechanism, traced through chromium 147:
+
+  1. compositor->SetBackgroundColor(SK_ColorTRANSPARENT) propagates
+     into cc::LayerTreeImpl::background_color_, alpha = 0.
+
+  2. cc::LayerTreeHostImpl::AppendQuadsToFillScreen
+     (cc/trees/layer_tree_host_impl.cc) early-returns when
+     screen_background_color.fA == 0, so no SolidColor quads are
+     emitted for the fill region.
+
+  3. Before the renderer paints its first frame, that fill region IS
+     the whole surface. The AggregatedFrame submitted to viz contains
+     no quads.
+
+  4. viz's Display compositor takes the empty frame through the GPU
+     output surface (SkiaRenderer + OverlayProcessorOzone) and produces
+     no wl_buffer for it. config.buffer_id stays 0 on the resulting
+     WaylandFrame.
+
+  5. WaylandFrameManager::MaybeProcessPendingFrame
+     (ui/ozone/platform/wayland/host/wayland_frame_manager.cc) only
+     calls OnSequencePoint, which is what advances the configure-ack
+     state, when (!frame->buffer_lost && !!config.buffer_id) or
+     should_ack_swap_without_commit_. With buffer_id = 0 and no
+     ack-without-commit flag, the ack never fires, the wl_surface
+     stays unmapped, no buffer attaches, the panel keeps showing
+     weston-desktop-shell's background.
+
+The software output device (SoftwareRenderer behind
+--disable-gpu-compositing) takes a different swap path that always
+produces a buffer regardless of damage state, which is why the
+workaround unwedged the pipe.
+
+Setting the compositor backstop to SK_ColorBLACK (alpha = 255) makes
+AppendQuadsToFillScreen emit a full-screen SolidColorDrawQuad on every
+frame until the renderer covers the surface. viz now has content for
+the first frame, the GPU output surface produces a wl_buffer, the ack
+fires, the wl_surface gets mapped, GPU compositing carries from then
+on. Black before the first paint is fine for this device; the panel's
+default is black and the bridgething theme is dark.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/graphics/cast_window_manager_aura.cc
++++ b/chromecast/graphics/cast_window_manager_aura.cc
+@@ -197,8 +197,18 @@
+       std::make_unique<CastLayoutManager>(this, root_window));
+   window_tree_host_->SetRootTransform(GetPrimaryDisplayRotationTransform());
+ 
+-  // Allow seeing through to the hardware video plane:
+-  window_tree_host_->compositor()->SetBackgroundColor(SK_ColorTRANSPARENT);
++  // bridgething patch: keep the compositor backstop opaque (black).
++  // Upstream sets SK_ColorTRANSPARENT to see through to a hardware
++  // video plane, which bridgething does not have. With alpha = 0
++  // cc::LayerTreeHostImpl::AppendQuadsToFillScreen early-returns and
++  // emits no quads for the fill region; before the renderer's first
++  // paint the AggregatedFrame is empty, the GPU output surface
++  // produces no wl_buffer, and WaylandFrameManager never gets a frame
++  // with config.buffer_id != 0 to advance OnSequencePoint /
++  // ack_configure. Opaque black gives viz a full-screen
++  // SolidColorDrawQuad to draw, so the configure handshake completes
++  // on the first frame.
++  window_tree_host_->compositor()->SetBackgroundColor(SK_ColorBLACK);
+ 
+   focus_client_ = std::make_unique<CastFocusClientAura>();
+   aura::client::SetFocusClient(root_window, focus_client_.get());

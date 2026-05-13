@@ -1,0 +1,51 @@
+cast_shell: size CastContentWindow at CreateWindow time
+
+Upstream's flow is:
+
+  CastServiceSimple::StartInternal()
+    -> CreateWebView
+    -> LoadUrl(startup_url_)
+    -> GrantScreenAccess()      // window_ is null, no-op
+    -> CreateWindow()           // sets window_; never calls SetFullWindowBounds
+
+The actual SetFullWindowBounds call lives in CastContentWindowAura::
+DidStartNavigation, which fires only once per CastContentWindow because
+resize_window_when_navigation_starts_ flips to false. That works on
+production Cast hardware where multi-process timing leaves the observer
+attached well before the URL load fires DidStartNavigation. On this
+build (single-process + immediate LoadUrl) the navigation can be far
+enough along by the time WebContentsObserver attaches that the one
+DidStartNavigation event is dropped, leaving the wl_surface at the
+default 0x0 bounds and the panel showing the compositor background.
+
+Call SetFullWindowBounds() from CreateWindow() the moment window_ is
+non-null. Idempotent with the DidStartNavigation path; covers the
+case where the observer missed the event.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/cast_content_window_aura.cc
++++ b/chromecast/browser/cast_content_window_aura.cc
+@@ -125,6 +125,20 @@
+   touch_blocker_ =
+       std::make_unique<TouchBlocker>(window_, !params_->enable_touch_input);
+
++  // bridgething patch: size the WebContents window to the primary
++  // display now, in addition to relying on DidStartNavigation. The
++  // upstream path is: GrantScreenAccess() called before CreateWindow()
++  // (so window_ is null and SetFullWindowBounds is skipped) and then
++  // a single DidStartNavigation event sets bounds when the first
++  // navigation actually fires through the observer. On this build
++  // with --single-process + immediate LoadUrl the early-bound
++  // navigation can land before the WebContentsObserver is attached,
++  // dropping the only resize signal and leaving the wl_surface at
++  // its default 0x0 bounds. Calling SetFullWindowBounds here
++  // guarantees the window picks up the CastScreen primary display
++  // size as soon as window_ exists.
++  SetFullWindowBounds();
++
+   if (has_screen_access_) {
+     window_->Show();
+   } else {

@@ -115,6 +115,36 @@
 # unconditionally regardless of any active webapp's net.proxy
 # permission - the bridgething webserver is reached directly, never
 # through the SOCKS path.
+#
+# --cast-graphics-width=800 --cast-graphics-height=480 seed the
+# CastScreen primary display via CastDisplayConfigurator's existing
+# command-line path (chromecast/browser/cast_display_configurator.cc
+# kCastGraphicsWidth / kCastGraphicsHeight). Without these flags the
+# configurator falls back to GetDefaultScreenResolution() = 1280x720,
+# CastContentWindowAura sizes the cast_shell wl_surface to that, and
+# the actual panel (800x480 after weston's mode=480x800 transform=
+# rotate-270) shows the compositor background because the wl_surface
+# extents don't match what weston is presenting. With the right
+# resolution the host bounds line up with the wl_output and the
+# webapp renders to the panel. cast_core normally drives this through
+# its runtime display bring-up, gated off by patch 0001.
+#
+# GPU compositing is enabled (no --disable-gpu-compositing). The viz
+# Display compositor's final composite-to-output step uses the
+# SkiaRenderer / OverlayProcessorOzone / GbmSurfacelessWayland /
+# WaylandBufferManagerHost chain through ANGLE-GLES on Mesa-Panfrost on
+# the Mali-G31. Patches 0006-0009 in the chromium bbappend together
+# remove the four Cast-hardware assumptions that prevented this chain
+# from completing on bridgething (set_fullscreen instead of set_maxi
+# mized, opaque-black compositor backstop, no kDisableGpuEarlyInit
+# default, ShouldCreatePrimaryPlane returns true even though IS_CASTOS).
+# The wedge in 0009 was found via differential perfetto trace
+# (--trace-startup=wayland,viz,gpu) - in the wedged build the
+# OverlayProcessorOzone gates the root render pass out of the candidate
+# list and the ScheduleOverlayPlane chain never runs, so no wl_buffer
+# is ever attached to the wl_surface. With all four patches GPU
+# compositing works and the device returns the 0.5-1.4 A53 cores that
+# software composite was eating per workload.
 
 set -eu
 
@@ -160,6 +190,8 @@ exec ./chromium-bin \
     --ozone-platform=wayland \
     --ozone-platform-hint=wayland \
     --use-angle=gles \
+    --cast-graphics-width=800 \
+    --cast-graphics-height=480 \
     --disk-cache-size=52428800 \
     --allow-insecure-localhost \
     --noerrdialogs \

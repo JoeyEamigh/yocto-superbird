@@ -1,0 +1,53 @@
+cast_shell: drop the unconditional --disable-gpu-early-init default
+
+CastBrowserMainParts appends `--disable-gpu-early-init` to the
+command line via kDefaultSwitches with the rationale "It's better to
+start GPU process on demand. For example, for TV platforms cast
+starts in background and can't render until TV switches to cast
+input."
+
+On bridgething there's no equivalent "user switches input" event;
+the device boots straight into the kiosk with an active output and
+needs to render immediately. With the switch on,
+content/browser/browser_main_loop.cc takes the
+gpu-channel-not-yet-established path:
+
+  establish_gpu_channel = true;
+  if (parsed_command_line_->HasSwitch(switches::kDisableGpu) ||
+      parsed_command_line_->HasSwitch(switches::kDisableGpuCompositing) ||
+      parsed_command_line_->HasSwitch(switches::kDisableGpuEarlyInit)) {
+    establish_gpu_channel = always_uses_gpu = false;
+  }
+  BrowserGpuChannelHostFactory::Initialize(establish_gpu_channel);
+
+`always_uses_gpu = false` plus the factory initialised without a
+channel leaves the viz Display compositor without a GPU output
+surface; frame production for the aura compositor never starts, so
+WaylandFrameManager gets no frame with config.buffer_id != 0 after
+the first xdg_surface.ack_configure and the wl_surface stays
+unmapped. The empirical signature on this stack is a single
+ack_configure followed by indefinite wayland silence with the panel
+showing weston-desktop-shell's background.
+
+Removing the entry lets the default browser-main-loop initialise the
+GPU channel at startup the same way upstream chrome does, so viz
+boots with a working output and the wayland buffer-attach loop
+spins up immediately.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/cast_browser_main_parts.cc
++++ b/chromecast/browser/cast_browser_main_parts.cc
+@@ -331,10 +331,6 @@
+ #endif
+ #endif
+ #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+-    // It's better to start GPU process on demand. For example, for TV platforms
+-    // cast starts in background and can't render until TV switches to cast
+-    // input.
+-    {switches::kDisableGpuEarlyInit, ""},
+     // Enable navigator.connection API.
+     // TODO(derekjchow): Remove this switch when enabled by default.
+     {switches::kEnableNetworkInformationDownlinkMax, ""},

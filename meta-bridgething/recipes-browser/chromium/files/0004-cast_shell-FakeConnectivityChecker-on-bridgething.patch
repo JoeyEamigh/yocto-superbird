@@ -1,0 +1,64 @@
+cast_shell: install FakeConnectivityChecker, drop gstatic.com probe
+
+ConnectivityCheckerImpl probes
+https://connectivitycheck.gstatic.com/generate_204 every few seconds.
+On this device there is no upstream DNS / direct egress and the
+checker storms the log with
+
+    Connectivity check failed: net_error=-105
+    Notify connectivity check failure.
+
+forever. Nothing in the kiosk path observes Connected() state - the
+checker is purely Cast plumbing for an offline / soft-online overlay
+the webapp does not render. FakeConnectivityChecker is already in the
+connectivity_checker source set unconditionally (the IS_FUCHSIA guard
+in this file is only because Fuchsia was the prior in-tree user); it
+reports always-connected with zero network traffic and zero log spam.
+
+This patch drops the platform guard around the fake header include
+and swaps the real checker for the fake at construction time.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/cast_browser_main_parts.cc
++++ b/chromecast/browser/cast_browser_main_parts.cc
+@@ -18,6 +18,7 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/logging.h"
+ #include "base/memory/ptr_util.h"
++#include "base/memory/ref_counted.h"
+ #include "base/path_service.h"
+ #include "base/run_loop.h"
+ #include "base/strings/string_split.h"
+@@ -110,9 +111,7 @@
+ #include "chromecast/net/network_change_notifier_factory_cast.h"
+ #endif
+
+-#if BUILDFLAG(IS_FUCHSIA)
+ #include "chromecast/net/fake_connectivity_checker.h"
+-#endif
+
+ #if defined(USE_AURA)
+ // gn check ignored on OverlayManagerCast as it's not a public ozone
+@@ -580,12 +579,13 @@
+   cast_browser_process_->SetBrowserContext(
+       std::make_unique<CastBrowserContext>());
+
+-  cast_browser_process_->SetConnectivityChecker(ConnectivityChecker::Create(
+-      content::GetIOThreadTaskRunner({}),
+-      cast_browser_process_->browser_context()
+-          ->GetDefaultStoragePartition()
+-          ->GetURLLoaderFactoryForBrowserProcessIOThread(),
+-      content::GetNetworkConnectionTracker()));
++  // bridgething patch: this device has no upstream DNS or direct
++  // egress, and nothing in the kiosk path observes Connected() state.
++  // The real checker stormed the log with periodic
++  // gstatic.com/generate_204 failures. The fake reports
++  // always-connected, no probes, no log lines.
++  cast_browser_process_->SetConnectivityChecker(
++      base::MakeRefCounted<FakeConnectivityChecker>());
+
+   cast_browser_process_->SetMetricsServiceClient(
+       std::make_unique<metrics::CastMetricsServiceClient>(
