@@ -1,0 +1,92 @@
+#!/bin/bash
+#
+# superbird-vnc-capture - grab a PNG of the panel via weston's VNC backend.
+#
+# Why this isn't just `vncdotool capture`: weston links neatvnc with the TLS
+# PACKAGECONFIG, which forces the auth handshake into the RA2 family
+# (RSA-AES-256 = 129, RSA-AES = 5, Apple-DH = 30). vncdotool and asyncvnc
+# do not implement any of these; the closest we have is TigerVNC, which
+# only talks GUI. So this drives a headless Xvfb + TigerVNC + xdotool +
+# ImageMagick chain.
+#
+# Defaults assume an SSH tunnel from a known device port to 127.0.0.1:5910
+# (the standard pattern: `ssh -L 5910:127.0.0.1:5900 root@<device>`).
+#
+# Usage:
+#   superbird-vnc-capture [output.png]
+#
+# Env knobs:
+#   SUPERBIRD_VNC_PORT - tunnel local port (default 5910)
+#   SUPERBIRD_VNC_HOST - tunnel local host (default 127.0.0.1)
+#   SUPERBIRD_VNC_USER - VNC username (default root; pam_permit on device)
+#   SUPERBIRD_VNC_PASS - VNC password (default root; pam_permit on device)
+#   XVFB_DISPLAY       - X display to use for the headless viewer (default :77)
+
+OUT="${1:-/tmp/superbird-panel.png}"
+PORT="${SUPERBIRD_VNC_PORT:-5910}"
+HOST="${SUPERBIRD_VNC_HOST:-127.0.0.1}"
+USER="${SUPERBIRD_VNC_USER:-root}"
+PASS="${SUPERBIRD_VNC_PASS:-root}"
+DPY="${XVFB_DISPLAY:-:77}"
+
+for cmd in Xvfb vncviewer xdotool import; do
+    if ! command -v "$cmd" >/dev/null; then
+        echo "missing dependency: $cmd" >&2
+        echo "arch: pacman -S xorg-server-xvfb tigervnc xdotool imagemagick" >&2
+        exit 1
+    fi
+done
+
+cleanup() {
+    [ -n "$VV_PID" ] && kill "$VV_PID" 2>/dev/null || true
+    [ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Wipe any stale instance on this display
+pkill -f "Xvfb ${DPY}\b" 2>/dev/null || true
+pkill -f "vncviewer.*${HOST}::${PORT}" 2>/dev/null || true
+sleep 0.5
+
+Xvfb "$DPY" -screen 0 1280x800x24 >/tmp/superbird-vnc-xvfb.log 2>&1 &
+XVFB_PID=$!
+sleep 1
+
+DISPLAY="$DPY" vncviewer \
+    SecurityTypes=RA2_256,RA2,RA2ne,RA2ne_256,DH,VncAuth,None \
+    "${HOST}::${PORT}" >/tmp/superbird-vnc-vncviewer.log 2>&1 &
+VV_PID=$!
+
+# Server-key-fingerprint dialog (RA2 verifies an RSA server key like SSH)
+FPWID=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.4
+    FPWID=$(DISPLAY="$DPY" xdotool search --name 'Server key fingerprint' 2>/dev/null | head -1) || true
+    [ -n "$FPWID" ] && break
+done
+if [ -n "$FPWID" ]; then
+    DISPLAY="$DPY" xdotool windowfocus --sync "$FPWID" 2>/dev/null || true
+    DISPLAY="$DPY" xdotool key --window "$FPWID" --clearmodifiers Return 2>/dev/null || true
+fi
+
+# Credentials dialog
+sleep 1
+CRWID=""
+for _ in 1 2 3 4 5 6 7 8; do
+    sleep 0.4
+    CRWID=$(DISPLAY="$DPY" xdotool search --name 'VNC authentication' 2>/dev/null | head -1) || true
+    [ -n "$CRWID" ] && break
+done
+if [ -n "$CRWID" ]; then
+    DISPLAY="$DPY" xdotool windowfocus --sync "$CRWID" 2>/dev/null || true
+    DISPLAY="$DPY" xdotool type --window "$CRWID" --delay 30 "$USER"
+    DISPLAY="$DPY" xdotool key --window "$CRWID" --clearmodifiers Tab
+    DISPLAY="$DPY" xdotool type --window "$CRWID" --delay 30 "$PASS"
+    DISPLAY="$DPY" xdotool key --window "$CRWID" --clearmodifiers Return
+fi
+
+# Let framebuffer settle - tigervnc enables continuous updates ~2-3s in
+sleep 5
+
+DISPLAY="$DPY" import -window root "$OUT"
+echo "$OUT"
