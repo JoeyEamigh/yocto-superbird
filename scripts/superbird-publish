@@ -26,9 +26,13 @@
 #   SUPERBIRD_RELEASE_VERSION   image version (e.g. 0.1.0). Required;
 #                               must equal what the running image
 #                               announces (BRIDGETHING_IMAGE_VERSION).
-#   SUPERBIRD_DAEMON_VERSION    daemon version (default: same as the
-#                               release version, since both are pinned
-#                               to DISTRO_VERSION today).
+#   SUPERBIRD_DAEMON_VERSION    daemon version. Default: the dir
+#                               name under build/tmp/work/.../
+#                               bridgething-daemon/ (i.e. the PV
+#                               the daemon recipe actually built).
+#                               Override only when running off-tree
+#                               or pinning to a version that differs
+#                               from the local build.
 #   R2_BUCKET                   default: bridgething-ota
 #   RCLONE_REMOTE               default: r2
 
@@ -61,7 +65,18 @@ if [[ -z "${SUPERBIRD_RELEASE_VERSION:-}" ]]; then
   exit 2
 fi
 IMAGE_VERSION="$SUPERBIRD_RELEASE_VERSION"
-DAEMON_VERSION="${SUPERBIRD_DAEMON_VERSION:-$IMAGE_VERSION}"
+# Default daemon version to whatever was actually built (the work
+# dir name is the daemon recipe's PV) rather than IMAGE_VERSION,
+# which carries channel suffixes like `-dev` that the daemon recipe
+# never sees. Falls back to IMAGE_VERSION only on a clean tree
+# before any daemon build - in which case the bundle composer will
+# fail at the missing-binary check anyway, with a useful message.
+if [[ -n "${SUPERBIRD_DAEMON_VERSION:-}" ]]; then
+  DAEMON_VERSION="$SUPERBIRD_DAEMON_VERSION"
+else
+  DAEMON_VERSION="$(ls -1 "$DAEMON_WORK" 2>/dev/null | head -n1)"
+  [[ -n "$DAEMON_VERSION" ]] || DAEMON_VERSION="$IMAGE_VERSION"
+fi
 COMPOSITE="${DAEMON_VERSION}+image.${IMAGE_VERSION}"
 
 for cmd in rclone bun jq sha256sum stat; do
@@ -85,7 +100,18 @@ IMAGE_ZIP="$DEPLOY/bridgething-${VARIANT}-image-superbird-flashthing.zip"
 [[ -x "$DAEMON_BIN" ]] || { echo "[publish] daemon binary missing: $DAEMON_BIN" >&2; exit 1; }
 [[ -e "$IMAGE_ZIP" ]] || { echo "[publish] image zip missing: $IMAGE_ZIP" >&2; exit 1; }
 
-BUNDLE_OUT="$DEPLOY/bridgething-${COMPOSITE}-${CHANNEL}.zip"
+# Drop the trailing -${CHANNEL} suffix when COMPOSITE already encodes
+# it via IMAGE_VERSION. The dev image flips
+# `BRIDGETHING_IMAGE_VERSION = "${DISTRO_VERSION}-dev"`, so for the dev
+# variant COMPOSITE already ends with `-dev` and a second `-dev`
+# tacked on yields `-dev-dev.zip`. Prod image keeps DISTRO_VERSION raw
+# (no `-stable` suffix on IMAGE_VERSION), so the suffix lands once
+# and the existing `-stable.zip` URL stays stable.
+if [[ "$COMPOSITE" == *"-${CHANNEL}" ]]; then
+  BUNDLE_OUT="$DEPLOY/bridgething-${COMPOSITE}.zip"
+else
+  BUNDLE_OUT="$DEPLOY/bridgething-${COMPOSITE}-${CHANNEL}.zip"
+fi
 echo "[publish] composing bundle -> $BUNDLE_OUT"
 META_JSON=$(cd "$SITE_ROOT" && bun run scripts/bundle-zip.ts \
   --image-zip "$IMAGE_ZIP" \
