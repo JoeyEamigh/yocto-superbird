@@ -65,6 +65,20 @@ SRC_URI:append = " file://0002-libinput-pick-pointer-focus-after-lazy-pointer-in
 # present.
 SRC_URI:append = " file://0003-input-zero-cursor-sprite-alpha-on-set-cursor.patch"
 
+# evdev_device_create eagerly inits seat caps for keyboard / touch /
+# tablet but defers pointer to ensure_pointer_capability(), which runs
+# on the first pointer-class libinput event. For a wheel-only rotary
+# encoder (REL_HWHEEL with no REL_X/Y or buttons) wl_seat advertises
+# pointer only after the user emits a scroll - meaning chromium hasn't
+# bound wl_pointer when the first scroll tick lands, and the tick is
+# dropped. Add the missing eager-init block so the seat exposes the
+# pointer cap at device-add time, matching the keyboard / touch path.
+# Pairs with 0002 (focus repick at lazy-init time) - 0004 makes init
+# happen at device-add and device_added's existing weston_seat_repick
+# call covers the post-init focus pick, so the lazy path in 0002 stays
+# correct as a fallback but rarely fires in practice on this device.
+SRC_URI:append = " file://0004-libinput-eager-pointer-cap-init-at-device-add.patch"
+
 do_install:append() {
     install -m 0644 ${UNPACKDIR}/weston-remote-access.pam \
         ${D}${sysconfdir}/pam.d/weston-remote-access

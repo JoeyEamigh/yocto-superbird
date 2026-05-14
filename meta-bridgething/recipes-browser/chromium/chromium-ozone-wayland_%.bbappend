@@ -108,6 +108,21 @@ SRC_URI[esbuild-arm64.sha256sum] = "70771c9212585cfd1b190465f92dae98d1d3fc4a4fab
 #         never fires. Confirmed by reading the chromium 147 source
 #         at components/viz/service/display/overlay_processor_ozone
 #         .cc:501.
+#   0010: CastServiceSimple::StartInternal sets enable_touch_input on
+#         the CastWebViewParams it passes into CreateWebViewInternal.
+#         Without this the mojom default (false) leaves CastContent
+#         WindowAura's TouchBlocker pre-target handler activated, and
+#         every ui::TouchEvent gets SetHandled() before reaching
+#         blink. Pairs with the launcher's --enable-input flag which
+#         opens the upstream CastWindowTreeHostAura::DispatchEvent
+#         gate (early-returns on every event when enable_input_ is
+#         false) and swaps the root window's NullWindowTargeter for
+#         a real one. Either alone leaves hardware touch dead: the
+#         WindowTreeHost gate drops events before they reach aura,
+#         and even when they reach aura the TouchBlocker eats touch
+#         specifically. Together they deliver hardware touch to
+#         blink. CDP Input.dispatch* keeps working in all cases
+#         because it injects downstream of aura.
 #
 # The screen-size seed itself (CastScreen primary display) is handled
 # in the launcher via the existing chromecast switches
@@ -129,6 +144,7 @@ SRC_URI:append = " \
     file://0007-cast_shell-opaque-compositor-background.patch \
     file://0008-cast_shell-no-disable-gpu-early-init.patch \
     file://0009-cast_shell-force-primary-plane-on-ozone.patch \
+    file://0010-cast_shell-enable-touch-input-in-CastServiceSimple.patch \
 "
 
 # cast-shell PACKAGECONFIG. Switches the chromium recipe from building

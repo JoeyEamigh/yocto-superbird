@@ -1,0 +1,40 @@
+cast_shell: deliver wl_touch events to blink on bridgething
+
+CastContentWindowAura installs a TouchBlocker pre-target handler on
+the WebContents native view at CreateWindow time, gated on
+!params_->enable_touch_input. TouchBlocker::OnTouchEvent calls
+touch->SetHandled() on every ui::TouchEvent it sees, so when the flag
+is left at its mojom default (false), wl_touch dispatches that have
+already cleared the CastWindowTreeHostAura gate are eaten in aura's
+pre-target chain and never reach blink.
+
+CastServiceSimple::StartInternal builds its CastWebViewParams from a
+default-constructed mojom struct and only sets enabled_for_dev. Flip
+enable_touch_input alongside it so the kiosk surface actually receives
+touch.
+
+Pairs with --enable-input on the launcher: that flag opens the
+CastWindowTreeHostAura::DispatchEvent gate (early-returns on every
+event when enable_input_ is false) and swaps the root window's
+NullWindowTargeter for a real one, so events reach aura at all. This
+patch then keeps them from being eaten one layer down. Either one
+alone leaves hardware touch dead; together they restore taps to blink.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/service/cast_service_simple.cc
++++ b/chromecast/browser/service/cast_service_simple.cc
+@@ -64,6 +64,11 @@
+   ::chromecast::mojom::CastWebViewParamsPtr params =
+       ::chromecast::mojom::CastWebViewParams::New();
+   params->enabled_for_dev = true;
++  // bridgething: deliver wl_touch events to blink. CastContentWindow
++  // Aura installs a TouchBlocker pre-target handler that calls
++  // touch->SetHandled() on every ui::TouchEvent unless this is true;
++  // the mojom default is false, which silently eats hardware taps.
++  params->enable_touch_input = true;
+
+   cast_web_view_ = web_service_->CreateWebViewInternal(std::move(params));
+   cast_web_view_->cast_web_contents()->LoadUrl(startup_url_);

@@ -145,6 +145,19 @@
 # is ever attached to the wl_surface. With all four patches GPU
 # compositing works and the device returns the 0.5-1.4 A53 cores that
 # software composite was eating per workload.
+#
+# --enable-input is mandatory for cast_shell to deliver hardware input.
+# Without it, CastWindowTreeHostAura::DispatchEvent early-returns on
+# every ui::Event and the root window gets a NullWindowTargeter, so
+# wl_touch dispatches from ozone-wayland arrive at the host but are
+# dropped before any aura window sees them. CDP Input.dispatch* keeps
+# working because it injects downstream of aura, at the render widget
+# host. Cast's intent for the default-off behaviour is engineering
+# builds that boot to a non-interactive splash before a runtime app
+# takes over; the bridgething kiosk has no such second stage. Pairs
+# with chromium patch 0010 which flips enable_touch_input on the
+# CastWebViewParams so the (now-delivered) touch events also clear
+# the TouchBlocker pre-target handler in CastContentWindowAura.
 
 set -eu
 
@@ -192,6 +205,7 @@ exec ./chromium-bin \
     --use-angle=gles \
     --cast-graphics-width=800 \
     --cast-graphics-height=480 \
+    --enable-input \
     --disk-cache-size=52428800 \
     --allow-insecure-localhost \
     --noerrdialogs \

@@ -1,0 +1,55 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] libinput-device: init pointer cap eagerly at device-add
+
+evdev_device_create() eagerly initializes seat caps for KEYBOARD, TOUCH,
+and TABLET_TOOL, but leaves POINTER for ensure_pointer_capability() to
+add lazily from the first POINTER_MOTION / _BUTTON / _AXIS event handler.
+
+For a wheel-only device (REL_HWHEEL with no REL_X/Y and no buttons) this
+delays wl_seat advertising the pointer cap until the user actually emits
+a scroll event. wayland clients walk wl_seat capabilities at registry
+walk + first wl_seat.capabilities event; chromium ozone-wayland binds
+wl_pointer only when it sees the cap announced. Until then, the only
+pointing-class hardware on the device (the rotary encoder) does nothing,
+and the first scroll wheel tick fires through weston with no client
+bound to receive it - the cap update and the first wl_pointer.axis cross
+to chromium together, but chromium's wl_seat.get_pointer round-trip
+doesn't complete in time for that first axis to land on a bound proxy.
+The user-visible symptom is a rotary that does nothing on the first
+tick, picks up from the second tick onward.
+
+Mirror the keyboard / touch eager init pattern: if libinput reports the
+device has CAP_POINTER at create time, call weston_seat_init_pointer()
+and mark seat_caps. device_added() in libinput-seat.c already calls
+weston_seat_repick() at the end of its flow, so the just-init'd pointer
+gets focus picked before the first axis event is queued.
+
+ensure_pointer_capability() stays correct as the fallback for any path
+that creates a CAP_POINTER device without going through this function
+(none in the udev backend, but the design keeps lazy init working).
+
+Upstream-Status: Inappropriate [downstream policy]
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+ libweston/libinput-device.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/libweston/libinput-device.c b/libweston/libinput-device.c
+--- a/libweston/libinput-device.c
++++ b/libweston/libinput-device.c
+@@ -1023,6 +1023,15 @@ evdev_device_create(struct libinput_device *libinput_device,
+ 	device->seat = seat;
+ 	wl_list_init(&device->link);
+ 	device->device = libinput_device;
++
++	/* bridgething: eagerly add pointer cap to the seat at device-add so
++	 * wayland clients see wl_seat advertise pointer before any pointer
++	 * event has fired. Mirrors the existing keyboard / touch handling. */
++	if (libinput_device_has_capability(libinput_device,
++					   LIBINPUT_DEVICE_CAP_POINTER)) {
++		weston_seat_init_pointer(seat);
++		device->seat_caps |= EVDEV_SEAT_POINTER;
++	}
+ 
+ 	if (libinput_device_has_capability(libinput_device,
+ 					   LIBINPUT_DEVICE_CAP_KEYBOARD)) {
