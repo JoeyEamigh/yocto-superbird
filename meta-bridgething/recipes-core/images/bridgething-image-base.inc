@@ -107,11 +107,46 @@ BRIDGETHING_CHANNEL ?= "stable"
 BRIDGETHING_IMAGE_VARIANT ?= "prod"
 BRIDGETHING_IMAGE_VERSION ?= "${DISTRO_VERSION}"
 
+# Build-identity stamps are filled in here rather than in
+# bridgething-init's do_install so the per-build DATETIME doesn't
+# invalidate the package recipe's sstate every build. Image recipes
+# always re-run do_rootfs anyway, so doing the substitution at
+# preprocess time is free. Anchoring on the build host's clock also
+# sidesteps the Car Thing's missing battery-backed RTC.
+BRIDGETHING_IMAGE_BUILD_ID = "${DISTRO}-${DISTRO_VERSION}-${DATETIME}"
+BRIDGETHING_IMAGE_BUILD_DATE = "${@d.getVar('DATETIME')[0:4]}-${@d.getVar('DATETIME')[4:6]}-${@d.getVar('DATETIME')[6:8]}T${@d.getVar('DATETIME')[8:10]}:${@d.getVar('DATETIME')[10:12]}:${@d.getVar('DATETIME')[12:14]}Z"
+# DATETIME is sampled per-build and reaches the signature via these
+# vars unless excluded - bitbake then flags do_image's basehash as
+# non-deterministic across reparses. Excluding here means changing
+# the stamp won't on its own re-run the image, but image recipes
+# always run do_rootfs anyway so the new value still lands.
+BRIDGETHING_IMAGE_BUILD_ID[vardepsexclude] = "DATETIME"
+BRIDGETHING_IMAGE_BUILD_DATE[vardepsexclude] = "DATETIME"
+
 bridgething_meta_postprocess() {
     sed -i \
         -e "s|@BRIDGETHING_CHANNEL@|${BRIDGETHING_CHANNEL}|g" \
         -e "s|@BRIDGETHING_IMAGE_VARIANT@|${BRIDGETHING_IMAGE_VARIANT}|g" \
         -e "s|@BRIDGETHING_IMAGE_VERSION@|${BRIDGETHING_IMAGE_VERSION}|g" \
+        -e "s|@IMAGE_BUILD_ID@|${BRIDGETHING_IMAGE_BUILD_ID}|g" \
+        -e "s|@IMAGE_BUILD_DATE@|${BRIDGETHING_IMAGE_BUILD_DATE}|g" \
         ${IMAGE_ROOTFS}${datadir}/superbird/meta.json.in
 }
+# Bitbake's shell-function parser doesn't reliably reach inside
+# `sed -e "s|...|${VAR}|g"` to discover the ${VAR} references and
+# add them to the task's signature. Without these declarations a
+# change to BRIDGETHING_IMAGE_VERSION (e.g. flipping the `-dev`
+# suffix) leaves the cached rootfs valid and the postprocess never
+# re-runs. Declare deps at both function and task scope so
+# whichever path bitbake actually inspects picks them up.
+_BRIDGETHING_META_VARDEPS = " \
+    BRIDGETHING_CHANNEL \
+    BRIDGETHING_IMAGE_VARIANT \
+    BRIDGETHING_IMAGE_VERSION \
+    BRIDGETHING_IMAGE_BUILD_ID \
+    BRIDGETHING_IMAGE_BUILD_DATE \
+"
+bridgething_meta_postprocess[vardeps] += "${_BRIDGETHING_META_VARDEPS}"
+IMAGE_PREPROCESS_COMMAND[vardeps] += "${_BRIDGETHING_META_VARDEPS}"
+do_image[vardeps] += "${_BRIDGETHING_META_VARDEPS}"
 IMAGE_PREPROCESS_COMMAND:append = " bridgething_meta_postprocess; "

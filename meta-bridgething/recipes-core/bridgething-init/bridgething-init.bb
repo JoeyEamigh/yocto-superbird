@@ -7,11 +7,12 @@ on every boot - patching in efuse-derived fields (btMac, \
 serialNumber) - and seeds the bluez alias so the device \
 advertises as 'Car Thing (SN: xxxx)'. \
 \
-Static fields (name, version, fccId, icId, modelName, image \
-build identity) are baked in at build time via bitbake variable \
-expansion against the template; the every-boot re-render keeps \
-them honest after a daemon push without depending on the \
-settings partition being wiped."
+Package-scope literals (name, version, fccId, icId, modelName) \
+are baked in here at do_install; per-image state (channel, \
+variant, version, build id/date) is filled in by \
+IMAGE_PREPROCESS_COMMAND. The every-boot re-render keeps both \
+honest after a daemon push without depending on the settings \
+partition being wiped."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -37,20 +38,16 @@ SYSTEMD_AUTO_ENABLE = "enable"
 # transitive trim.
 RDEPENDS:${PN} = ""
 
-# Bake the build-time identity. DATETIME is bitbake's per-build
-# timestamp; we render it as both a tag (build_id) and ISO-8601
-# date for human-friendly display in the gateway UI.
-IMAGE_BUILD_ID = "${DISTRO}-${DISTRO_VERSION}-${DATETIME}"
-IMAGE_BUILD_DATE = "${@d.getVar('DATETIME')[0:4]}-${@d.getVar('DATETIME')[4:6]}-${@d.getVar('DATETIME')[6:8]}T${@d.getVar('DATETIME')[8:10]}:${@d.getVar('DATETIME')[10:12]}:${@d.getVar('DATETIME')[12:14]}Z"
-IMAGE_BUILD_ID[vardepsexclude] = "DATETIME"
-IMAGE_BUILD_DATE[vardepsexclude] = "DATETIME"
-
-# The @BRIDGETHING_CHANNEL@ / @BRIDGETHING_IMAGE_VARIANT@ /
-# @BRIDGETHING_IMAGE_VERSION@ placeholders in the template are filled
-# in at image-build time (IMAGE_PREPROCESS_COMMAND in
-# bridgething-image-base.inc) because they're per-image, not
-# per-package. The package-level recipe leaves them as literal
-# placeholders for the image stage to replace.
+# All @VAR@ placeholders in the template that depend on per-build
+# or per-image state (channel, image variant, image version, build
+# id, build date) are filled in by IMAGE_PREPROCESS_COMMAND in
+# bridgething-image-base.inc. The package-level recipe substitutes
+# only the package-scope literals (distro name, fcc id, model name,
+# etc.) and leaves the rest as raw placeholders. This keeps the
+# package recipe's sstate stable across builds even when DATETIME
+# changes, and puts the build-date stamp on the build host's clock
+# (the Car Thing has no battery-backed RTC, so any boot-time stamp
+# would be a lie).
 
 do_install() {
     install -d ${D}${datadir}/superbird
@@ -68,8 +65,6 @@ do_install() {
         -e "s|@SUPERBIRD_FCC_ID@|${SUPERBIRD_FCC_ID}|g" \
         -e "s|@SUPERBIRD_IC_ID@|${SUPERBIRD_IC_ID}|g" \
         -e "s|@SUPERBIRD_MODEL_NAME@|${SUPERBIRD_MODEL_NAME}|g" \
-        -e "s|@IMAGE_BUILD_ID@|${IMAGE_BUILD_ID}|g" \
-        -e "s|@IMAGE_BUILD_DATE@|${IMAGE_BUILD_DATE}|g" \
         ${S}/superbird-meta.json.in \
         > ${D}${datadir}/superbird/meta.json.in
 
