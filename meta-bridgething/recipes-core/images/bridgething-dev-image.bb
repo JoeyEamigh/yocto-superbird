@@ -42,3 +42,11 @@ IMAGE_INSTALL:append = " \
 # reflash because the cross-channel zcks won't line up).
 BRIDGETHING_CHANNEL = "dev"
 BRIDGETHING_IMAGE_VARIANT = "dev"
+# `-dev` suffix keeps composeVersion (`<daemon>+image.<image>`) unique
+# across channels at the same DISTRO_VERSION - otherwise dev and
+# stable both compose to `0.1.0+image.0.1.0` and the discover
+# manifest's releases-by-version map can't hold both. Also lets the
+# companion's OtaArtifactURLs derive distinct `images/<channel>/
+# <imageVersion>/` paths on R2 without two channels landing in the
+# same prefix.
+BRIDGETHING_IMAGE_VERSION = "${DISTRO_VERSION}-dev"
