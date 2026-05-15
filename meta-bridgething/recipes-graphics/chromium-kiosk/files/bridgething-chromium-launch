@@ -63,6 +63,25 @@
 # --num-raster-threads=4 lets the raster thread pool fill all four
 # A53 cores.
 #
+# --disable-low-end-device-mode is mandatory on this device. chromium's
+# base::SysInfo::IsLowEndDevice() classifies any machine with under
+# 512 MB of total RAM as "low-end" and switches the raster tile
+# format from RGBA8888 to RGBA4444 (4 bits per channel) to halve tile
+# memory. The Car Thing has ~426 MB usable, so without an explicit
+# opt-out chromium picks RGBA4444 for any content-bearing tile and
+# leaves uniform-fill tiles at full precision. The visual result is
+# a horizontal seam wherever a paint region ends: content tiles
+# render colors snapped to multiples of 0x11 (so #1B1F23 becomes
+# #222222, the "off-white" #efefef becomes #eeeeee, etc.) while the
+# uniform tiles next to them keep the exact CSS color. Confirmed by
+# sweeping page-bg colors and watching the content half snap to the
+# nearest 4-bit value while the empty half stays exact. The setting
+# is the OFF switch for the auto-detected mode; --enable-low-end-
+# device-mode would turn it on explicitly, and is intentionally not
+# used (forces CPU rasterization, V8 lite-mode, smaller heaps - the
+# perf hit dwarfs the tile-memory savings now that --single-process
+# already trimmed ~70 MB).
+#
 # --js-flags is QUOTED. Without quotes, the shell word-splits the
 # value and only the first inner flag reaches V8 - the prior version
 # of this launcher passed --max-semi-space-size=4 unquoted, V8 never
@@ -217,6 +236,7 @@ exec ./chromium-bin \
     --force-color-profile=srgb \
     ${SINGLE_PROCESS_FLAG} \
     --num-raster-threads=4 \
+    --disable-low-end-device-mode \
     --enable-zero-copy \
     --password-store=basic \
     --no-pings \
