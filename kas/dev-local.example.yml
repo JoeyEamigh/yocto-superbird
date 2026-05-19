@@ -40,6 +40,17 @@ local_conf_header:
     EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
 
+    # externalsrc.bbclass still calls bb.fetch.get_hashvalue() against SRC_URI even
+    # though the actual build pulls from BRIDGETHING_LOCAL. Drop the github://
+    # fetch so a private repo or offline host doesn't block dev iteration; the
+    # local file:// entries kept by the recipe still resolve fine.
+    SRC_URI:remove:pn-bridgething-daemon = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRC_URI:remove:pn-bridgething-hub-webapp = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRC_URI:remove:pn-bridgething-mfi-proxy = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRCREV:pn-bridgething-daemon = "INVALID"
+    SRCREV:pn-bridgething-hub-webapp = "INVALID"
+    SRCREV:pn-bridgething-mfi-proxy = "INVALID"
+
     EXTERNALSRC_SYMLINKS = ""
 
     CARGO_BUILD_FLAGS:append:pn-bridgething-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
