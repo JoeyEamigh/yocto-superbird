@@ -3,10 +3,17 @@ header:
 
 distro: poky
 
+# Layers are pinned to specific commits so every checkout produces
+# identical bitbake task signatures. Without commit pins, kas pulls
+# branch HEAD at fetch time; two builders fetching minutes apart get
+# different sources, different sigs, zero shared sstate. Bump the
+# commit when you want to ride forward, run a full build, then push
+# sstate so the cache covers the new sigs.
 repos:
   bitbake:
     url: https://git.openembedded.org/bitbake
     branch: master
+    commit: cb28befc56d201cace72d70891e731b955fb567f
     path: sources/bitbake
     layers:
       .: disabled
@@ -14,6 +21,7 @@ repos:
   openembedded-core:
     url: https://git.openembedded.org/openembedded-core
     branch: wrynose
+    commit: 42fa856a00ac16b2a7a83d7ecfa60a5be192b16c
     path: sources/openembedded-core
     layers:
       meta:
@@ -21,6 +29,7 @@ repos:
   meta-yocto:
     url: https://git.yoctoproject.org/meta-yocto
     branch: wrynose
+    commit: 904846ae078ee20de073040ebb77c86e19250f56
     path: sources/meta-yocto
     layers:
       meta-poky:
@@ -28,6 +37,7 @@ repos:
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
     branch: wrynose
+    commit: 420222862f5a6d95023b8f5f3b7e1808b2264ef9
     path: sources/meta-openembedded
     layers:
       meta-oe:
@@ -39,6 +49,7 @@ repos:
   meta-meson:
     url: https://github.com/superna9999/meta-meson
     branch: master
+    commit: bc4bced07a532742b6dc5eb1de4897673ffb5576
     path: sources/meta-meson
     patches:
       machine-features-rename:
@@ -54,11 +65,13 @@ repos:
   meta-swupdate:
     url: https://github.com/sbabic/meta-swupdate
     branch: wrynose
+    commit: 48b1bf09b565f9927d7b52d48703028ba6c29526
     path: sources/meta-swupdate
 
   meta-webkit:
     url: https://github.com/Igalia/meta-webkit
     branch: master
+    commit: 5345f701e2297079217a855301c11add4da82788
     path: sources/meta-webkit
     # master claims `scarthgap whinlatter` in LAYERSERIES_COMPAT.
     # We add wrynose locally via meta-bridgething/conf/layer.conf
@@ -67,6 +80,7 @@ repos:
   meta-browser:
     url: https://github.com/OSSystems/meta-browser
     branch: master
+    commit: be0cd54c8dd26802ba21b777c99f0147be943572
     path: sources/meta-browser
     layers:
       meta-chromium:
