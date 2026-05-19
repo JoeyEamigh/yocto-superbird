@@ -1,7 +1,7 @@
 SUMMARY = "Bridgething development image - kitchen-sink iteration target"
 DESCRIPTION = "Same partition geometry as prod (stock AML MPT, 516 MB \
 system slots) since squashfs makes the lean shape enough for the \
-kitchen-sink install. Adds: cog + chromium-chromedriver + dev tools \
+kitchen-sink install. Adds: chromium-chromedriver + dev tools \
 (vim, htop, tmux, sshfs, glmark2), weston desktop-shell with the \
 panel visible, weston VNC backend wired, and debug-friendly auth \
 (allow-empty-password). \

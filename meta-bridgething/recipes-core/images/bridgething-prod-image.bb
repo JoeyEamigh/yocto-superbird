@@ -10,8 +10,8 @@ Differences from the dev image are: ext4 ro vs squashfs-lz4 (the \
 smaller cast_shell binary plus cruft cuts make the prod rootfs fit a \
 516 MiB ext4 partition with headroom, and ext4 avoids the squashfs \
 decompress threads' sustained PSI memory pressure on cold M-key), \
-plus install-set divergence (no cog/wpewebkit, no dev tools, no \
-persistent overlay). Same partition geometry, same OTA path - the \
+plus install-set divergence (no dev tools, no persistent overlay). \
+Same partition geometry, same OTA path - the \
 .swu's system.img cpio entry is filesystem-agnostic."
 LICENSE = "MIT"
 

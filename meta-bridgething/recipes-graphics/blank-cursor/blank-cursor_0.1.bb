@@ -2,7 +2,7 @@ SUMMARY = "Fully transparent xcursor theme for kiosk use"
 DESCRIPTION = "Ships /usr/share/icons/blank/, an xcursor theme where every \
 named cursor (left_ptr, hand2, xterm, ...) is a 1x1 fully transparent \
 pixel. With XCURSOR_THEME=blank set in the systemd environment, every \
-wayland client (weston-desktop-shell, chromium, cog) picks up the blank \
+wayland client (weston-desktop-shell, chromium) picks up the blank \
 theme and renders an invisible cursor — even when an input device \
 synthesizes pointer events (the Car Thing's rotary scroll wheel emits \
 REL_HWHEEL via libinput, which surfaces a cursor in shells that draw \

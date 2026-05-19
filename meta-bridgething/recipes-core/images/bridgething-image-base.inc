@@ -1,8 +1,8 @@
 # Shared image base for bridgething prod + dev variants. Lives at
 # IMAGE_FSTYPES = squashfs-lz4 with stock AML MPT partition geometry,
 # so dev + prod produce byte-identical layouts. The only differences
-# the per-variant recipes layer on top are install-set extras (cog,
-# chromedriver, dev tools), the weston shell choice (-kiosk vs
+# the per-variant recipes layer on top are install-set extras
+# (chromedriver, dev tools), the weston shell choice (-kiosk vs
 # -desktop), and the persistent /opt overlay (dev only). Everything
 # size-pressure-driven (the 1024 MB dev slot, ext4 -m 0 / -i 16384,
 # bridgething_prod_slim post-process) is gone — squashfs compresses
