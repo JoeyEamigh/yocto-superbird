@@ -31,6 +31,7 @@ IMAGE_INSTALL = " \
     e2fsprogs-e2fsck \
     e2fsprogs-tune2fs \
     libubootenv-bin \
+    superbird-provision \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"

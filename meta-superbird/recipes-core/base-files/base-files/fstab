@@ -1,10 +1,13 @@
 # Bridgething mainline-u-boot mount layout (milestone 1: bsp).
 #
-# Root is squashfs (read-only), selected by the kernel
-# root=PARTLABEL=root_a cmdline - no fstab row needed for /.
-# /mnt/uboot-env exposes the u-boot environment partition for
-# fw_printenv / fw_setenv.
+# Root is squashfs (read-only), selected by the kernel root=PARTLABEL=root_a
+# cmdline - no fstab row needed for /. /var lives on the `data` partition,
+# which superbird-provision creates in the free eMMC space on first boot
+# (the flashed wic only carries env + boot_a + root_a). x-systemd.makefs
+# formats `data` ext4 the first time it is seen blank. /mnt/uboot-env
+# exposes the u-boot environment partition for fw_printenv / fw_setenv.
 
+PARTLABEL=data  /var            ext4  rw,noatime,nofail,x-systemd.makefs  0 2
 PARTLABEL=env   /mnt/uboot-env  vfat  rw,noatime,nofail                   0 2
 
 proc            /proc       proc    defaults                    0 0
