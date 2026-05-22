@@ -1,0 +1,28 @@
+# BSP-only build with the bridgething private-repo parse bypass.
+#
+# kas/bsp.yml pulls in meta-bridgething (for bridgething-usb-gadget etc.),
+# so bitbake parses the bridgething-{daemon,hub-webapp,mfi-proxy} recipes
+# whose SRC_URI points at the private github repo. AUTOREV resolution runs
+# git ls-remote during parse, which fails without container github auth.
+# The BSP image installs none of those recipes, so we just drop their
+# github SRC_URI and pin SRCREV INVALID. No externalsrc, no host-specific
+# BRIDGETHING_LOCAL needed - this file is fully generic and committable.
+
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/bsp.yml
+
+local_conf_header:
+  no-bridgething-fetch: |
+    SRC_URI:remove:pn-bridgething-daemon = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRC_URI:remove:pn-bridgething-hub-webapp = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRC_URI:remove:pn-bridgething-mfi-proxy = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRCREV:pn-bridgething-daemon = "INVALID"
+    SRCREV:pn-bridgething-hub-webapp = "INVALID"
+    SRCREV:pn-bridgething-mfi-proxy = "INVALID"
+
+repos:
+  yocto-superbird:
+    path: .
