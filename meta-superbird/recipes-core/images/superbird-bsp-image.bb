@@ -1,22 +1,14 @@
 SUMMARY = "Superbird BSP-only image - kernel + busybox + SSH"
 DESCRIPTION = "Smallest flashable image for the Spotify Car Thing. \
-Mainline v6.19 kernel with the BSP patches (panel, BT, touchscreen, \
-rotary, ALS, pinctrl), busybox userspace, openssh, and the \
-USB-CDC-ECM gadget so the device is reachable at a per-serial /29 in \
-10.42.1.x over the USB-C cable. No mDNS in this image - the IP \
-varies per serial and callers must know it (see fw_printenv or the \
-gadget script). The bridgething dev/prod images add avahi for \
-bridgething.local resolution. No bridgething daemon, no chromium. \
-Useful as a BSP-bringup target, a kernel-iteration target, or a \
-base for any non-bridgething userspace flashed onto Superbird hardware. \
+Mainline kernel with the BSP patches (panel, BT, touchscreen, rotary, \
+ALS, pinctrl), busybox userspace, openssh, and the USB-CDC-ECM gadget. \
 \
-Same partition geometry, same flash mechanic, and same OTA shape as \
-the bridgething images - just with the application userspace stripped \
-out."
+mainline-uboot branch: boots via elle'"'"'s mainline u-boot (extlinux), \
+GPT user-area layout produced by wic. No stock-Amlogic flashthing zip. \
+Useful as a BSP-bringup / kernel-iteration target."
 LICENSE = "MIT"
 
 inherit core-image
-inherit superbird-flashthing
 
 IMAGE_FEATURES += " \
     ssh-server-openssh \
@@ -38,16 +30,24 @@ IMAGE_INSTALL = " \
     e2fsprogs-mke2fs \
     e2fsprogs-e2fsck \
     e2fsprogs-tune2fs \
+    libubootenv-bin \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
 
-SUPERBIRD_PART_TABLE = "system_a:0x10600000:0x2040b000,system_b:0x3120b000:0x2040b000,settings:0x52e16000:0x10000000,data:0x63616000:0x859ea000"
-SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
-SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
-SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
+# mainline-uboot: emit a GPT user-area disk image via wic instead of the
+# stock-Amlogic flashthing zip. Layout in superbird-mainline.wks:
+#   env (uboot.env) + boot_a (kernel/dtb/extlinux) + root_a (squashfs).
+# squashfs is also emitted standalone so the root_a partition content can
+# be flashed on its own during bring-up testing.
+IMAGE_FSTYPES = "wic squashfs"
+WKS_FILE = "superbird-mainline.wks"
 
-SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
-EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
-
-IMAGE_FSTYPES = "squashfs-lz4"
+# wic consumes deploy-dir artifacts from these recipes: the kernel + DTB
+# (bootimg-partition / IMAGE_BOOT_FILES), the env FAT image (env rawcopy
+# partition), and extlinux.conf (bootimg-partition / IMAGE_BOOT_FILES).
+do_image_wic[depends] += " \
+    virtual/kernel:do_deploy \
+    superbird-uenv:do_deploy \
+    superbird-extlinux:do_deploy \
+"

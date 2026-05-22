@@ -1,15 +1,15 @@
 SUMMARY = "Superbird system tuning + base config files"
-DESCRIPTION = "BSP-level system config: zRAM swap tuning and udev \
-rules that map the stock Amlogic partition numbers to friendly \
-/dev/{system_a, system_b, misc, settings, data, boot_a, boot_b} \
-aliases. /etc/fstab lives in a base-files bbappend (sibling \
-recipes-core/base-files/) since base-files owns that path."
+DESCRIPTION = "BSP-level system config: zRAM swap tuning, scroll-wheel \
+input rules, the libubootenv fw_env.config, and the /var/cache tmpfiles \
+seed. /etc/fstab lives in a base-files bbappend (sibling \
+recipes-core/base-files/) since base-files owns that path. Partition \
+naming needs no rule here - udev's stock 60-persistent-storage.rules \
+already exposes every GPT partition under /dev/disk/by-partlabel/."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 SRC_URI = " \
     file://zram.conf \
-    file://10-superbird-partitions.rules \
     file://61-bridgething-rotary.rules \
     file://50-bridgething-rotary.quirks \
     file://fw_env.config \
@@ -24,8 +24,6 @@ do_install() {
     install -m 0644 ${S}/zram.conf ${D}${sysconfdir}/sysctl.d/30-zram.conf
 
     install -d ${D}${sysconfdir}/udev/rules.d
-    install -m 0644 ${S}/10-superbird-partitions.rules \
-        ${D}${sysconfdir}/udev/rules.d/10-superbird-partitions.rules
     install -m 0644 ${S}/61-bridgething-rotary.rules \
         ${D}${sysconfdir}/udev/rules.d/61-bridgething-rotary.rules
 
@@ -35,6 +33,12 @@ do_install() {
 
     install -m 0644 ${S}/fw_env.config ${D}${sysconfdir}/fw_env.config
     install -m 0644 ${S}/hwrevision    ${D}${sysconfdir}/hwrevision
+
+    # Mount point for the u-boot env partition (fstab: PARTLABEL=env ->
+    # /mnt/uboot-env). The rootfs is read-only squashfs, so the directory
+    # must be baked in at build time - systemd cannot create a mount
+    # point under /mnt when the parent filesystem is read-only.
+    install -d ${D}/mnt/uboot-env
 
     # Ensure /var/cache exists with sane perms on first boot. /var is on
     # the writable data partition; without an explicit tmpfile entry,
@@ -55,11 +59,11 @@ do_install() {
 
 FILES:${PN} = " \
     ${sysconfdir}/sysctl.d/30-zram.conf \
-    ${sysconfdir}/udev/rules.d/10-superbird-partitions.rules \
     ${sysconfdir}/udev/rules.d/61-bridgething-rotary.rules \
     ${sysconfdir}/libinput/local-overrides.quirks \
     ${sysconfdir}/fw_env.config \
     ${sysconfdir}/hwrevision \
     ${libdir}/tmpfiles.d/superbird-cache.conf \
     /root/.cache \
+    /mnt/uboot-env \
 "
