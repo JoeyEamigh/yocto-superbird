@@ -3,7 +3,7 @@ DESCRIPTION = "Smallest flashable image for the Spotify Car Thing. \
 Mainline kernel with the BSP patches (panel, BT, touchscreen, rotary, \
 ALS, pinctrl), busybox userspace, openssh, and the USB-CDC-ECM gadget. \
 \
-mainline-uboot branch: boots via elle'"'"'s mainline u-boot (extlinux), \
+mainline-uboot branch: boots via elle's mainline u-boot (extlinux), \
 GPT user-area layout produced by wic. No stock-Amlogic flashthing zip. \
 Useful as a BSP-bringup / kernel-iteration target."
 LICENSE = "MIT"
@@ -32,6 +32,22 @@ IMAGE_INSTALL = " \
     e2fsprogs-tune2fs \
     libubootenv-bin \
     superbird-provision \
+"
+
+# Display bring-up. bridgething-weston-init-desktop is joey's known-good
+# boot-Weston setup (systemd unit + desktop-shell weston.ini bound to
+# DSI-1 480x800, rotated for landscape) - it RDEPENDS weston itself, so
+# the BSP image gets a real compositor on the panel. bridgething-cursor-
+# suppress is the weston module that weston.ini's [core] modules= loads -
+# weston aborts at startup if it's absent, and weston-init doesn't
+# RDEPEND it (the bridgething packagegroup normally pulls it). weston-vnc-
+# backend satisfies the vnc-backend.so the desktop variant's dev env
+# references; weston-examples gives demo clients for confirming render.
+IMAGE_INSTALL += " \
+    bridgething-weston-init-desktop \
+    bridgething-cursor-suppress \
+    weston-vnc-backend \
+    weston-examples \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
