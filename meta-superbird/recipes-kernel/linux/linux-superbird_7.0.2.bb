@@ -18,7 +18,6 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0002-Bluetooth-btbcm-add-BCM20703A2-UART-subver.patch \
            file://0003-drm-bridge-dw-mipi-dsi-add-skip_first_enable-hook.patch \
            file://0004-drm-meson-preserve-display-state-across-bootloader-handoff.patch \
-           file://0005-drm-meson-realign-DW-MIPI-DSI-lane-byte-counter.patch \
            file://0006-drm-meson-DW-DSI-PHY-testcode-0x44-before-PHY_LOCK.patch \
            file://0007-drm-meson-disable-pipeline-dither-on-MIPI-DSI.patch \
            file://0008-backlight-pwm-add-pwm-bootloader-on.patch \
