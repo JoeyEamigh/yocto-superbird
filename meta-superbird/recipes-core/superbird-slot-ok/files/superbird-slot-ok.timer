@@ -1,0 +1,12 @@
+[Unit]
+Description=Mark A/B slot healthy a short time after boot
+
+[Timer]
+# Fire 60s after boot. If the system panics/hangs before this, the timer
+# never fires, the slot's try counter stays decremented, and u-boot rolls
+# back after enough failed boots.
+OnBootSec=60s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target

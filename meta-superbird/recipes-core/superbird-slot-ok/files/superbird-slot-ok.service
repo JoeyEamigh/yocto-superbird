@@ -1,0 +1,9 @@
+[Unit]
+Description=Mark current A/B slot healthy (reset u-boot retry counter)
+# The env partition must be mounted for fw_setenv to reach uboot.env.
+After=mnt-uboot\x2denv.mount
+ConditionPathExists=/mnt/uboot-env/uboot.env
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/superbird-slot-ok

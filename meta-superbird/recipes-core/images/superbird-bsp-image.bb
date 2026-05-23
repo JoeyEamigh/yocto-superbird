@@ -33,6 +33,7 @@ IMAGE_INSTALL = " \
     libubootenv-bin \
     superbird-provision \
     superbird-cpufreq-cap \
+    superbird-slot-ok \
 "
 
 # Display bring-up. bridgething-weston-init-desktop is joey's known-good
