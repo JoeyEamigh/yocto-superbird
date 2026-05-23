@@ -44,4 +44,4 @@ slot_active=a
 slot_a_tries=3
 slot_b_tries=3
 
-bootcmd=part number mmc 0 boot_${slot} boot_partnum && sysboot mmc 0:${boot_partnum} any ${scriptaddr} /extlinux/extlinux.conf
+bootcmd=ab_boot
