@@ -32,6 +32,7 @@ IMAGE_INSTALL = " \
     e2fsprogs-tune2fs \
     libubootenv-bin \
     superbird-provision \
+    superbird-cpufreq-cap \
 "
 
 # Display bring-up. bridgething-weston-init-desktop is joey's known-good
