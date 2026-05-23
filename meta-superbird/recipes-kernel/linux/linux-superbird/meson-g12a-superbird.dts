@@ -749,3 +749,20 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+/* Override clock-latency-ns on every CPU OPP to give the SY8120B1ABC
+ * pwm-regulator enough time to settle on each voltage step. The
+ * inherited meson-g12a.dtsi only sets 50 us on the lowest OPP; that
+ * is tight for the larger jumps (e.g. 861 -> 981 mV at the top of the
+ * table needs ~40 PWM cycles at 1250 ns each = 50 us just for duty
+ * change, plus the LC filter time). 200 us is safely above measured
+ * SY8120 transient response across all observed jump sizes. */
+&cpu_opp_table {
+	opp-1000000000 { clock-latency-ns = <200000>; };
+	opp-1200000000 { clock-latency-ns = <200000>; };
+	opp-1398000000 { clock-latency-ns = <200000>; };
+	opp-1512000000 { clock-latency-ns = <200000>; };
+	opp-1608000000 { clock-latency-ns = <200000>; };
+	opp-1704000000 { clock-latency-ns = <200000>; };
+	opp-1800000000 { clock-latency-ns = <200000>; };
+};
