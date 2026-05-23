@@ -51,6 +51,15 @@ IMAGE_INSTALL += " \
     weston-examples \
 "
 
+
+# Audio test tooling. Card 0 (axg-sound-card / amlogic,g12a-pdm) is plumbed
+# end-to-end at the kernel level but the BSP image has no userspace tools to
+# exercise it. alsa-utils gives us arecord (capture from the 4-mic PDM array),
+# amixer/alsactl (mixer + state management), and the supporting infra.
+IMAGE_INSTALL += " \
+    alsa-utils \
+"
+
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
 
 # mainline-uboot: emit a GPT user-area disk image via wic instead of the
