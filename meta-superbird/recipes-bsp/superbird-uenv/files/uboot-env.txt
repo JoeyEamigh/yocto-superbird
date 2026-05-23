@@ -1,25 +1,47 @@
 # u-boot environment for the Spotify Car Thing - mainline u-boot path.
 #
-# elle's mainline u-boot ships an intentionally policy-free default
-# environment (no boot machinery at all). u-boot loads this file as
-# uboot.env from the GPT partition named env. It supplies the boot
-# policy: extlinux-boot slot A from the GPT partition named boot_a.
+# Mainline u-boot ships an intentionally policy-free default environment.
+# This file becomes uboot.env on the GPT partition named env; u-boot loads
+# it at boot via CONFIG_ENV_IS_IN_FAT.
 #
-# The boot partition is referenced by its GPT label, not a hardcoded
-# p-number: `part number` resolves boot_a -> its partition index, then
-# sysboot reads extlinux.conf from it.
+# Variables consumed:
+#   slot              "a" or "b" - which slot to boot. Defaults to "a" here.
+#                     Phase-3 u-boot bootcmd overrides based on slot_active /
+#                     slot_X_tries state machine (Android-style A/B).
+#   slot_active       which slot is active (consumed by phase-3 bootcmd; not
+#                     used by the static bootcmd below). Set by Linux on OTA.
+#   slot_a_tries      retries remaining for slot a; reset by Linux slot-ok
+#                     service after a stable boot. Default 3.
+#   slot_b_tries      same for slot b.
+#   charger_cap_khz   set by u-boot from MAX14656 detection at boot; consumed
+#                     by extlinux.conf APPEND substitution.
 #
-# Milestone 1: hardcoded slot A. A/B selection lands with OTA.
+# Partition references use GPT labels (no hardcoded p-numbers): u-boot's
+# `part number mmc 0 boot_${slot}` resolves the label to an index at runtime.
+
 stdin=serial
 stdout=serial
 stderr=serial
+
 fdt_addr_r=0x01000000
 kernel_addr_r=0x08080000
 scriptaddr=0x08000000
 pxefile_addr_r=0x01080000
 ramdisk_addr_r=0x13000000
+
 # Image.gz is gzip-compressed; booti decompresses it into this scratch
 # buffer. kernel_comp_size must exceed the *decompressed* Image (~44 MiB).
 kernel_comp_addr_r=0x0a000000
 kernel_comp_size=0x4000000
-bootcmd=part number mmc 0 boot_a boot_partnum && sysboot mmc 0:${boot_partnum} any ${scriptaddr} /extlinux/extlinux.conf
+
+# A/B slot defaults. The static bootcmd below boots ${slot} (i.e. slot a by
+# default). Phase-3 u-boot bootcmd will pick this based on slot_active +
+# tries counters, and the phase-4 Linux slot-ok service will reset tries
+# after a stable boot. Initial slot_b_tries = 3 because factory wic
+# mirrors slot a into slot b - both are bootable on day 1.
+slot=a
+slot_active=a
+slot_a_tries=3
+slot_b_tries=3
+
+bootcmd=part number mmc 0 boot_${slot} boot_partnum && sysboot mmc 0:${boot_partnum} any ${scriptaddr} /extlinux/extlinux.conf
