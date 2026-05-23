@@ -1,8 +1,8 @@
 [Unit]
 Description=Weston compositor
-After=systemd-user-sessions.service multi-user.target
-Wants=dbus.socket
-After=dbus.socket
+DefaultDependencies=no
+After=local-fs.target seatd.service dbus.socket systemd-tmpfiles-setup.service
+Wants=dbus.socket seatd.service
 
 [Service]
 Type=simple
@@ -22,4 +22,4 @@ Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=basic.target

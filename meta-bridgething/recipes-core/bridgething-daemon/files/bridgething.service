@@ -1,9 +1,8 @@
 [Unit]
 Description=Bridgething daemon
-After=network.target bluetooth.service bridgething-init.service bridgething-opt-init.service
+After=network.target bridgething-init.service bridgething-opt-init.service
 Wants=bluetooth.service
 Requires=bridgething-opt-init.service
-Before=bridgething-chromium-kiosk.service
 Conflicts=bridgething-als.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
