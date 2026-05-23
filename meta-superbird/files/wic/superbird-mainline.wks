@@ -1,17 +1,24 @@
-# Spotify Car Thing - GPT user-area layout for the mainline u-boot
-# boot path. elle's mainline u-boot lives in eMMC boot0/boot1 (signed
-# FIP, flashed separately by superbird-fip-tools) and is policy-free
-# about the user area - this kickstart owns it.
+# Spotify Car Thing mainline u-boot wic layout.
+# Symmetric A/B slots plus the env partition, the bandaid overlay, and
+# (carved by superbird-provision on first boot) the data partition.
+# Sizes match the project partition spec. Both slots ship identical
+# content at factory-flash time, so either slot is bootable from boot 1
+# (Android-style factory init: A/B selection state lives in uboot.env;
+# OTA updates the inactive slot, not the factory wic).
 #
-# Milestone 1: env + boot_a + root_a, hardcoded slot A. The B slot,
-# the bandaid overlay and the data partition land when OTA is wired.
-#
-#   env     vfat      holds uboot.env (u-boot CONFIG_ENV_FAT, "0#env")
-#   boot_a  vfat      kernel + dtb + extlinux/extlinux.conf
-#   root_a  squashfs  rootfs (kernel root= points here, mmcblk0p3)
+#   env     8 MiB   vfat       uboot.env (CONFIG_ENV_FAT, "0#env")
+#   boot_a 32 MiB   vfat       kernel + dtb + extlinux/extlinux.conf
+#   root_a 516 MiB  squashfs   read-only rootfs (active slot's root=)
+#   boot_b 32 MiB   vfat       mirror of boot_a at factory
+#   root_b 516 MiB  squashfs   mirror of root_a at factory
+#   bandaid 64 MiB  ext4       overlay-upper layer for in-place patches
+#   data   rest     ext4       carved by superbird-provision on first boot
 
-part env    --source rawcopy --sourceparams="file=superbird-uenv.vfat" --part-name env    --label env    --fstype=vfat     --align 4096 --fixed-size 8M
-part boot_a --source bootimg-partition                                 --part-name boot_a --label boot_a --fstype=vfat     --align 4096 --fixed-size 32M
-part root_a --source rootfs                                            --part-name root_a --fstype=squashfs --align 4096
+part env     --source rawcopy --sourceparams="file=superbird-uenv.vfat" --part-name env     --label env     --fstype=vfat     --align 4096 --fixed-size 8M
+part boot_a  --source bootimg-partition                                 --part-name boot_a  --label boot_a  --fstype=vfat     --align 4096 --fixed-size 32M
+part root_a  --source rootfs                                            --part-name root_a                  --fstype=squashfs --align 4096 --fixed-size 516M
+part boot_b  --source bootimg-partition                                 --part-name boot_b  --label boot_b  --fstype=vfat     --align 4096 --fixed-size 32M
+part root_b  --source rootfs                                            --part-name root_b                  --fstype=squashfs --align 4096 --fixed-size 516M
+part bandaid                                                            --part-name bandaid --label bandaid --fstype=ext4     --align 4096 --fixed-size 64M
 
 bootloader --ptable gpt
