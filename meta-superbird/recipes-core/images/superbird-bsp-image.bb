@@ -79,3 +79,9 @@ do_image_wic[depends] += " \
     superbird-uenv:do_deploy \
     superbird-extlinux:do_deploy \
 "
+
+# The bootloader lives in the eMMC boot0/boot1 hardware partitions, not in the
+# wic GPT layout - so it isn't a wic input, just a sibling deploy artifact.
+# EXTRA_IMAGEDEPENDS makes `bitbake superbird-bsp-image` build + deploy it
+# (superbird-uboot's do_deploy emits superbird-boot.bin into DEPLOY_DIR_IMAGE).
+EXTRA_IMAGEDEPENDS += "superbird-uboot"

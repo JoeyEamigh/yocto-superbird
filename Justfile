@@ -56,6 +56,18 @@ build target=default:
     fi
     args+=(--runtime-args "-v $local_dir:$local_dir")
   fi
+  # The private ThingLabsOSS repos (superbird-uboot, superbird-fip-tools) need
+  # github creds inside the container. KAS_GIT_CREDENTIAL_STORE points at a git
+  # credential-store file (default ~/.config/superbird-kas.git-credentials); if
+  # present, hand it to kas-container, which bind-mounts it read-only and wires
+  # git's store helper with an absolute --file path (HOME-independent, so it
+  # survives the fetcher's temp-HOME). The file is host-local, never committed.
+  # Mint it from your gh login:
+  #   printf 'https://USER:%s@github.com\n' "$(gh auth token)" > "$cred"; chmod 600 "$cred"
+  cred="${KAS_GIT_CREDENTIAL_STORE:-$HOME/.config/superbird-kas.git-credentials}"
+  if [ -f "$cred" ]; then
+    args+=(--git-credential-store "$cred")
+  fi
   kas-container "${args[@]}" build kas/{{target}}.yml
 
 # Drop into a bitbake shell inside the container. Useful for `bitbake
