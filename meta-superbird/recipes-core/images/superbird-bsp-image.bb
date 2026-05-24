@@ -36,25 +36,6 @@ IMAGE_INSTALL = " \
     superbird-slot-ok \
 "
 
-# Display bring-up. weston-init-desktop is joey's known-good boot-Weston
-# (DSI-1 480x800, rotated landscape) and RDEPENDS weston. cursor-suppress
-# is load-bearing: weston.ini's [core] modules= loads it and weston aborts
-# at startup if it's absent, but weston-init doesn't RDEPEND it. vnc-backend
-# + examples are for the dev env / confirming render.
-IMAGE_INSTALL += " \
-    bridgething-weston-init-desktop \
-    bridgething-cursor-suppress \
-    weston-vnc-backend \
-    weston-examples \
-"
-
-
-# Audio test tooling - arecord/amixer to exercise the PDM mic array (card 0,
-# axg-sound-card), which is kernel-plumbed but has no userspace tools otherwise.
-IMAGE_INSTALL += " \
-    alsa-utils \
-"
-
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
 
 # Emit a GPT disk image via wic (layout in superbird-mainline.wks) instead of

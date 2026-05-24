@@ -1,0 +1,69 @@
+# Superbird mainline BSP OTA - wic A/B layout.
+#
+# Unlike the stock-Amlogic .swu (raw byte offsets on /dev/mmcblk0, because its
+# boot/dtbo partitions live in the invisible AML MPT), the mainline wic has real
+# GPT partitions - so each entry is a straight raw write to a by-partlabel device,
+# no offsets. Two entries per slot: boot.vfat (kernel + dtb + extlinux, written to
+# boot_X) and system.img (squashfs rootfs, written to root_X). No separate dtb
+# entry - the dtb rides inside boot.vfat under /extlinux/.
+#
+# Slot flip via the bootenv block: swupdate sets slot_active + resets that slot's
+# tries atomically after both writes succeed (the mainline ab_boot vocabulary -
+# slot_active=a/b, slot_X_tries - not stock's active_slot=_a / want_boot). Needs
+# CONFIG_BOOTLOADERHANDLER=y (meta-bridgething's swupdate bbappend) + swupdate.cfg's
+# fwenv=/etc/fw_env.config pointing at the env partition's uboot.env.
+#
+# Selector: superbird-ota picks the inactive slot and runs
+# `swupdate-client -e stable,slot_a|slot_b`.
+
+software =
+{
+    version = "@@VERSION@@";
+    description = "Superbird mainline BSP OTA";
+
+    # Matched against /etc/hwrevision (`superbird 1.0`) - second column.
+    hardware-compatibility: [ "1.0" ];
+
+    stable: {
+        slot_a: {
+            images: (
+                {
+                    filename = "boot.vfat";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/boot_a";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/root_a";
+                    installed-directly = true;
+                }
+            );
+            bootenv: (
+                { name = "slot_active";  value = "a"; },
+                { name = "slot_a_tries"; value = "3"; }
+            );
+        };
+        slot_b: {
+            images: (
+                {
+                    filename = "boot.vfat";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/boot_b";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/root_b";
+                    installed-directly = true;
+                }
+            );
+            bootenv: (
+                { name = "slot_active";  value = "b"; },
+                { name = "slot_b_tries"; value = "3"; }
+            );
+        };
+    };
+};
