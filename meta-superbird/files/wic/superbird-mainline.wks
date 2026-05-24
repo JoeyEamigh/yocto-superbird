@@ -1,10 +1,7 @@
-# Spotify Car Thing mainline u-boot wic layout.
-# Symmetric A/B slots plus the env partition, the bandaid overlay, and
-# (carved by superbird-provision on first boot) the data partition.
-# Sizes match the project partition spec. Both slots ship identical
-# content at factory-flash time, so either slot is bootable from boot 1
-# (Android-style factory init: A/B selection state lives in uboot.env;
-# OTA updates the inactive slot, not the factory wic).
+# Mainline u-boot wic layout: symmetric A/B slots + env + bandaid overlay.
+# Both slots ship identical content at factory-flash, so either boots from
+# boot 1; A/B selection state lives in uboot.env and OTA writes the inactive
+# slot. The data partition is carved by superbird-provision on first boot.
 #
 #   env     8 MiB   vfat       uboot.env (CONFIG_ENV_FAT, "0#env")
 #   boot_a 32 MiB   vfat       kernel + dtb + extlinux/extlinux.conf

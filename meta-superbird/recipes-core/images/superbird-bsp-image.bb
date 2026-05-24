@@ -36,15 +36,11 @@ IMAGE_INSTALL = " \
     superbird-slot-ok \
 "
 
-# Display bring-up. bridgething-weston-init-desktop is joey's known-good
-# boot-Weston setup (systemd unit + desktop-shell weston.ini bound to
-# DSI-1 480x800, rotated for landscape) - it RDEPENDS weston itself, so
-# the BSP image gets a real compositor on the panel. bridgething-cursor-
-# suppress is the weston module that weston.ini's [core] modules= loads -
-# weston aborts at startup if it's absent, and weston-init doesn't
-# RDEPEND it (the bridgething packagegroup normally pulls it). weston-vnc-
-# backend satisfies the vnc-backend.so the desktop variant's dev env
-# references; weston-examples gives demo clients for confirming render.
+# Display bring-up. weston-init-desktop is joey's known-good boot-Weston
+# (DSI-1 480x800, rotated landscape) and RDEPENDS weston. cursor-suppress
+# is load-bearing: weston.ini's [core] modules= loads it and weston aborts
+# at startup if it's absent, but weston-init doesn't RDEPEND it. vnc-backend
+# + examples are for the dev env / confirming render.
 IMAGE_INSTALL += " \
     bridgething-weston-init-desktop \
     bridgething-cursor-suppress \
@@ -53,35 +49,27 @@ IMAGE_INSTALL += " \
 "
 
 
-# Audio test tooling. Card 0 (axg-sound-card / amlogic,g12a-pdm) is plumbed
-# end-to-end at the kernel level but the BSP image has no userspace tools to
-# exercise it. alsa-utils gives us arecord (capture from the 4-mic PDM array),
-# amixer/alsactl (mixer + state management), and the supporting infra.
+# Audio test tooling - arecord/amixer to exercise the PDM mic array (card 0,
+# axg-sound-card), which is kernel-plumbed but has no userspace tools otherwise.
 IMAGE_INSTALL += " \
     alsa-utils \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
 
-# mainline-uboot: emit a GPT user-area disk image via wic instead of the
-# stock-Amlogic flashthing zip. Layout in superbird-mainline.wks:
-#   env (uboot.env) + boot_a (kernel/dtb/extlinux) + root_a (squashfs).
-# squashfs is also emitted standalone so the root_a partition content can
-# be flashed on its own during bring-up testing.
+# Emit a GPT disk image via wic (layout in superbird-mainline.wks) instead of
+# the stock flashthing zip. squashfs is also emitted standalone so root_a can
+# be flashed on its own during bring-up.
 IMAGE_FSTYPES = "wic squashfs"
 WKS_FILE = "superbird-mainline.wks"
 
-# wic consumes deploy-dir artifacts from these recipes: the kernel + DTB
-# (bootimg-partition / IMAGE_BOOT_FILES), the env FAT image (env rawcopy
-# partition), and extlinux.conf (bootimg-partition / IMAGE_BOOT_FILES).
+# Artifacts wic pulls from the deploy dir: kernel+DTB, the env FAT image, extlinux.conf.
 do_image_wic[depends] += " \
     virtual/kernel:do_deploy \
     superbird-uenv:do_deploy \
     superbird-extlinux:do_deploy \
 "
 
-# The bootloader lives in the eMMC boot0/boot1 hardware partitions, not in the
-# wic GPT layout - so it isn't a wic input, just a sibling deploy artifact.
-# EXTRA_IMAGEDEPENDS makes `bitbake superbird-bsp-image` build + deploy it
-# (superbird-uboot's do_deploy emits superbird-boot.bin into DEPLOY_DIR_IMAGE).
+# u-boot lives in boot0/boot1, not the wic GPT - so it's a sibling deploy
+# artifact, not a wic input. EXTRA_IMAGEDEPENDS builds + deploys superbird-boot.bin.
 EXTRA_IMAGEDEPENDS += "superbird-uboot"
