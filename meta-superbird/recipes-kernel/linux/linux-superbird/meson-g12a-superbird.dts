@@ -766,3 +766,33 @@
 	opp-1704000000 { clock-latency-ns = <200000>; };
 	opp-1800000000 { clock-latency-ns = <200000>; };
 };
+
+/* `reboot bootloader` / fastboot soft-entry (mainline). syscon-reboot-mode
+ * stashes a magic reboot reason in PREG_STICKY_REG3 (0xff6345cc); u-boot's
+ * carthing_boot_route reads + one-shot-clears it on the next boot and enters
+ * fastboot — no buttons, no maskrom. The reg is a PERIPHS sticky scratch
+ * (survives a warm reset, cold-clears, freely CPU-writable, unlike
+ * AO_SEC_SD_CFG15 which hangs the bus on any AP write). Full writeup:
+ * docs/reboot-bootloader.md in the superbird-uboot repo.
+ *
+ * 0xff6345cc is periphs-bus offset 0x1cc — an unclaimed gap between the
+ * pinctrl gpio reg windows (0x40/0xe8/0x120/0x2c0/0x340), so this dedicated
+ * 4-byte syscon doesn't overlap the pinctrl. Encoding: MAGIC 0x5242a100
+ * ("RB") | REBOOT_REASON (bootloader=7, fastboot=4, recovery=2). mode-normal=0
+ * clears the magic on a plain reboot so the next boot is a normal A/B boot. */
+&periphs {
+	sticky_reboot: syscon@1cc {
+		compatible = "syscon", "simple-mfd";
+		reg = <0x0 0x1cc 0x0 0x4>;
+
+		reboot-mode {
+			compatible = "syscon-reboot-mode";
+			offset = <0x0>;
+			mask = <0xffffffff>;
+			mode-bootloader = <0x5242a107>;
+			mode-fastboot   = <0x5242a104>;
+			mode-recovery   = <0x5242a102>;
+			mode-normal     = <0x00000000>;
+		};
+	};
+};
