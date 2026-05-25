@@ -6,7 +6,7 @@
 # ignores --remote-debugging-address=<non-localhost>. The browser
 # always binds 127.0.0.1, even when the flag asks for 0.0.0.0. Google
 # removed the bind-elsewhere path for security reasons (CVE class).
-# The Car Thing's only interface is the USB-CDC-ECM gadget so there
+# The Car Thing's only interface is the USB-CDC-NCM gadget so there
 # is no real LAN exposure to worry about, but chromium doesn't care —
 # it still refuses. SSH tunneling is the canonical workaround.
 #

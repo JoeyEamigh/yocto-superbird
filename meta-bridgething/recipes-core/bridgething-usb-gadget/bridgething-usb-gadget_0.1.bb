@@ -1,24 +1,23 @@
-SUMMARY = "Bridgething USB gadget bring-up (RNDIS + CDC-ECM + ADB) for dev-iteration SSH/ADB"
+SUMMARY = "Bridgething USB gadget bring-up (CDC-NCM + ADB) for dev-iteration SSH/ADB"
 DESCRIPTION = "Configures a single-config composite USB-gadget on the \
 Superbird's DWC2 peripheral controller at boot. The configuration carries \
-three functions: RNDIS (Microsoft OS descriptors steer Windows to its inbox \
-driver), CDC-ECM (Linux/macOS/Win10+ inbox), and FunctionFS-backed ADB \
-(adbd writes the descriptors before the UDC bind). The boot script derives \
-a /29 subnet from the device serial-sha (so two Car Things on one host \
-land in disjoint subnets); the device IP is `10.42.1.<offset+2>` for RNDIS \
-and `10.42.0.<offset+2>` for ECM, and systemd-networkd hands out DHCP \
-leases inside the same /29. The avahi service published from the bridgething \
-image announces `bridgething.local` (auto-suffixed when two devices race). \
-Plug-and-play across all three OSes with adb shell available as a recovery \
-channel even when networking is broken."
+two functions: CDC-NCM (Linux/macOS/Win 8.1+ inbox, frame-aggregating so \
+throughput beats both RNDIS and CDC-ECM) and FunctionFS-backed ADB (adbd \
+writes the descriptors before the UDC bind). The boot script derives a \
+/29 subnet from the device serial-sha (so two Car Things on one host \
+land in disjoint subnets); the device IP is `10.42.1.<offset+2>` and \
+systemd-networkd hands out DHCP leases inside the same /29. The avahi \
+service published from the bridgething image announces `bridgething.local` \
+(auto-suffixed when two devices race). Plug-and-play across all three \
+OSes with adb shell available as a recovery channel even when networking \
+is broken."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 SRC_URI = "\
     file://bridgething-usb-gadget.sh \
     file://bridgething-usb-gadget.service \
-    file://11-usb-rndis.network \
-    file://12-usb-ecm.network \
+    file://11-usb-ncm.network \
     file://adbd-bridgething.conf \
     file://usb-debugging-enabled \
 "
@@ -38,8 +37,7 @@ do_install() {
     install -m 0644 ${S}/bridgething-usb-gadget.service ${D}${systemd_system_unitdir}/
 
     install -d ${D}${sysconfdir}/systemd/network
-    install -m 0644 ${S}/11-usb-rndis.network ${D}${sysconfdir}/systemd/network/
-    install -m 0644 ${S}/12-usb-ecm.network   ${D}${sysconfdir}/systemd/network/
+    install -m 0644 ${S}/11-usb-ncm.network ${D}${sysconfdir}/systemd/network/
 
     # Drop-in retargets the upstream android-tools-adbd.service to our
     # composite gadget instead of its default adbd-only one. Ships
@@ -59,8 +57,7 @@ FILES:${PN} = "\
     ${libexecdir}/bridgething-usb-gadget \
     ${systemd_system_unitdir}/bridgething-usb-gadget.service \
     ${systemd_system_unitdir}/android-tools-adbd.service.d/bridgething.conf \
-    ${sysconfdir}/systemd/network/11-usb-rndis.network \
-    ${sysconfdir}/systemd/network/12-usb-ecm.network \
+    ${sysconfdir}/systemd/network/11-usb-ncm.network \
     ${sysconfdir}/usb-debugging-enabled \
 "
 

@@ -2,7 +2,7 @@ SUMMARY = "Auto-launch chromium as the bridgething kiosk under weston"
 DESCRIPTION = "Ships the systemd unit + launcher script that exec chromium \
 in --kiosk mode bound to the running weston session, with CDP \
 unconditionally on 0.0.0.0:9222 (LAN-debug-anywhere; the only network \
-on this device is the USB-CDC-ECM gadget) and chrome's first paint \
+on this device is the USB-CDC-NCM gadget) and chrome's first paint \
 matched to the bootloader splash so the boot transition is seamless. \
 Target URL + extra chrome flags are sourced from \
 /etc/default/bridgething-kiosk so iteration doesn't require an image \

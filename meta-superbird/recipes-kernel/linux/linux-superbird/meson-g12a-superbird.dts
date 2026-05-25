@@ -291,14 +291,24 @@
  * SPRAM and the per-EP TX budget is total - g-rx-fifo-size - g-np-tx-fifo-size.
  * The mainline default g-np-tx-fifo-size = <128> is sized for shared-FIFO
  * mode; in dedicated mode (which we use) NP-TX only carries EP0 control,
- * so 32 dwords is plenty and frees 96 dwords for per-EP TX. The five
- * IN endpoints in our composite gadget split into three bulk-IN
- * (RNDIS, CDC-ECM, ADB) at 128 dwords each (one HS maxpacket) and two
- * interrupt-IN (RNDIS notify, CDC-ECM notify) at 16 dwords each, total
- * 416 dwords. Without this override the upstream g-tx-fifo-size of
- * <128 128 16 16 16> only has two 128-dword slots, so the third bulk-IN
- * fails with "No suitable fifo found" at SET_CONFIGURATION. Budget:
- * 712 - 192 (rx) - 32 (np-tx) = 488 dwords available, 416 used.
+ * so 32 dwords is plenty.
+ *
+ * The g-tx-fifo-size array length is bound by the hardware's fifo_count
+ * (5 on this DWC2 instance: dmesg "EPs: 7, dedicated fifos"), not by how
+ * many IN endpoints our gadget actually uses. dwc2 reads up to 15 entries
+ * from the DT, zero-pads the rest, then dwc2_check_param_tx_fifo_sizes
+ * walks [1..fifo_count] and rejects any entry < min (16). Rejected entries
+ * get overwritten with the hardware's full per-FIFO depth, and the next
+ * dwc2_hsotg_init_fifo trips "insufficient fifo memory" and the UDC bind
+ * fails with -ENODEV. So: ALWAYS supply 5 entries, all >= 16, regardless
+ * of how many gadget functions we ship.
+ *
+ * Our composite is two bulk-IN (CDC-NCM, ADB) at 128 dwords (one HS
+ * maxpacket) and one interrupt-IN (NCM notify) at 16 dwords. dwc2's
+ * best-fit allocator picks slots by maxpacket so the two bulk-INs land
+ * in the 128-slots and the int-IN in a 16-slot. The trailing 128 is a
+ * reserve for a future bulk-IN function (mass_storage, ACM). Budget:
+ * 712 - 192 (rx) - 32 (np-tx) = 488 available, 416 reserved here.
  */
 &dwc2 {
 	g-np-tx-fifo-size = <32>;

@@ -1,34 +1,25 @@
 #!/usr/bin/env bash
 # Bridgething USB gadget bring-up.
 #
-# Single-config composite gadget exposing three functions to the host:
-#   - rndis.usb0  (urndis0)  - 10.42.2.0/24 subnet. Microsoft OS 1.0
-#                              compat-id triggers Windows' inbox RNDIS
-#                              driver, no .inf needed. Device side is
-#                              10.42.2.2; host gets a DHCP lease in
-#                              10.42.2.10-17.
-#   - ecm.usb0    (uecm0)    - 10.42.1.0/24 subnet. Linux/macOS pick
-#                              this via the standard CDC class triplet;
-#                              Windows 10 1809+ inbox CDC-ECM also works.
-#                              Device side is 10.42.1.2; host gets a
-#                              DHCP lease in 10.42.1.10-17.
+# Single-config composite gadget exposing two functions to the host:
+#   - ncm.usb0    (uncm0)    - 10.42.1.0/24 carved into /29s per device
+#                              serial. CDC-NCM has inbox drivers across
+#                              Linux (cdc_ncm since 3.2), macOS, and
+#                              Windows 8.1+, and aggregates Ethernet
+#                              frames per USB transfer so throughput
+#                              beats both RNDIS and CDC-ECM. Device
+#                              side is 10.42.1.<offset+2>; host gets a
+#                              DHCP lease in 10.42.1.<offset+3..6>.
 #   - ffs.adb     (ep0/1/2)  - FunctionFS slot wired up at boot but driven
-#                              by adbd in userspace; adbd writes the USB
-#                              descriptors to /dev/usb-ffs/adb/ep0 before
-#                              the UDC is bound.
+#                              by adbd in userspace; adbd opens
+#                              /dev/usb-ffs/adb/ep0 to write the USB
+#                              descriptors before the UDC is bound.
 #
-# Each network function lives on its own /24 - no bridge - so Linux's
-# kernel routes 10.42.1.2 unambiguously through ECM (faster + lower
-# RNDIS protocol overhead) and Windows reaches 10.42.2.2 through RNDIS.
-# Each interface runs systemd-networkd's internal DHCP server. Avahi
-# publishes bridgething.local on both, so per-OS hostname resolution
-# returns whichever subnet the host's interface is on.
-#
-# Three IN endpoints carry bulk traffic (RNDIS, ECM, ADB) plus two
-# interrupt-IN for RNDIS / ECM notifications - 5 dedicated TX FIFOs total.
-# G12A's DWC2 reserves 712 dwords of SPRAM; the per-EP TX layout is set
-# in the board DTS via &dwc2 { g-tx-fifo-size = ... } so the three bulk
-# slots get 128 dwords each (one HS maxpacket).
+# Two IN endpoints carry bulk traffic (NCM, ADB) plus one interrupt-IN
+# for NCM notifications. G12A's DWC2 reserves 712 dwords of SPRAM and
+# the per-EP TX layout is set in the board DTS via
+# &dwc2 { g-tx-fifo-size = ... } so the two bulk slots get 128 dwords
+# each (one HS maxpacket).
 #
 # Critical: this script does NOT bind the UDC. adbd's systemd unit
 # (android-tools-adbd.service with our drop-in) opens the FFS ep0 to
@@ -48,8 +39,10 @@ if ! mountpoint -q /sys/kernel/config; then
     mount -t configfs none /sys/kernel/config
 fi
 
-# Idempotent teardown: if the gadget already exists, unwind it so re-run
-# applies changes cleanly (useful during script iteration via SSH).
+# Idempotent teardown: unwind an already-composed gadget so re-runs
+# during SSH iteration apply changes cleanly. The os_desc loop is a
+# no-op for trees that never populated os_desc/* (the NCM-only path
+# doesn't), but covers stale trees that did.
 if [[ -d "$CFG" ]]; then
     echo "" > "$CFG/UDC" 2>/dev/null || true
     if mountpoint -q "$FFS_MOUNT"; then
@@ -90,8 +83,8 @@ echo 0x0200 > "$CFG/bcdUSB"
 # adb host client's libusb hotplug filter silently skips devices with
 # a non-zero bDeviceClass - hosts then never see the ADB function and
 # `adb devices` stays empty even though the kernel-side gadget is fine.
-# RNDIS and CDC-ECM each ship their own per-function IAD descriptor
-# regardless, so the OSes that need it still get it.
+# CDC-NCM ships its own per-function IAD descriptor regardless, so the
+# OSes that need it still get it.
 
 mkdir -p "$CFG/strings/0x409"
 echo "bridgething"           > "$CFG/strings/0x409/manufacturer"
@@ -101,54 +94,30 @@ echo "$SERIAL"               > "$CFG/strings/0x409/serialnumber"
 
 # Stable MACs derived from the device serial so two Superbirds on the same
 # host don't collide. Locally-administered bit (0x02) set, multicast bit
-# clear. Each network function gets its own (host_addr, dev_addr) pair.
+# clear.
 SERIAL_SHA=$(echo -n "$SERIAL" | sha256sum)
 mac_suffix=$(echo "${SERIAL_SHA:0:8}" | sed 's/../&:/g; s/:$//')
-RNDIS_HOST_MAC="02:11:22:${mac_suffix:0:8}"
-RNDIS_DEV_MAC="02:11:33:${mac_suffix:0:8}"
-ECM_HOST_MAC="02:11:44:${mac_suffix:0:8}"
-ECM_DEV_MAC="02:11:55:${mac_suffix:0:8}"
+NCM_HOST_MAC="02:11:44:${mac_suffix:0:8}"
+NCM_DEV_MAC="02:11:55:${mac_suffix:0:8}"
 
-# Per-serial subnets so two Superbirds on the same host get distinct IPs.
-# Without this, both devices try to bind 10.42.1.2 on their ECM interface
-# and the host's routing table only sees one. Subnets are /29 (8 addrs
-# each = device + host + 4-slot DHCP pool + network/broadcast), packed
-# into the second octet so ECM lives in 10.42.0.0/24 and RNDIS in
-# 10.42.1.0/24 with up to 32 distinct devices per network type.
+# Per-serial /29 subnet so two Superbirds on the same host get distinct
+# IPs. /29 = 8 addrs (network + host + device + 4-slot DHCP pool +
+# broadcast). 32 disjoint subnets fit in 10.42.1.0/24.
 serial_nibble=$((16#${SERIAL_SHA:0:2} & 0x1F))
 subnet_offset=$((serial_nibble * 8))
-ECM_DEV_IP="10.42.0.$((subnet_offset + 2))"
-ECM_HOST_IP="10.42.0.$((subnet_offset + 1))"
-RNDIS_DEV_IP="10.42.1.$((subnet_offset + 2))"
-RNDIS_HOST_IP="10.42.1.$((subnet_offset + 1))"
+NCM_DEV_IP="10.42.1.$((subnet_offset + 2))"
+NCM_HOST_IP="10.42.1.$((subnet_offset + 1))"
 DHCP_POOL_OFFSET=3
 DHCP_POOL_SIZE=4
 
-# Microsoft OS 1.0 descriptors. Windows queries the device with vendor
-# request 0xCD; the gadget framework intercepts that and returns the
-# per-function compatible-id table. The "MSFT100" string descriptor at
-# index 0xEE is auto-generated once `use=1` is set.
-echo 1       > "$CFG/os_desc/use"
-echo 0xcd    > "$CFG/os_desc/b_vendor_code"
-echo MSFT100 > "$CFG/os_desc/qw_sign"
-
-# RNDIS function. Compat-id "RNDIS" + sub-compat "5162001" triggers
-# Windows' inbox RNDIS-over-USB driver, no .inf required.
-mkdir -p "$CFG/functions/rndis.usb0"
-echo "$RNDIS_HOST_MAC" > "$CFG/functions/rndis.usb0/host_addr"
-echo "$RNDIS_DEV_MAC"  > "$CFG/functions/rndis.usb0/dev_addr"
+# CDC-NCM function. Linux, macOS, and Windows 8.1+ all bind via the
+# standard CDC class triplet - no Microsoft OS descriptors needed.
+mkdir -p "$CFG/functions/ncm.usb0"
+echo "$NCM_HOST_MAC" > "$CFG/functions/ncm.usb0/host_addr"
+echo "$NCM_DEV_MAC"  > "$CFG/functions/ncm.usb0/dev_addr"
 # Kernel u_ether.c requires the ifname pattern to contain exactly one "%d"
 # so the gadget framework can pick a non-colliding instance number.
-echo "urndis%d"        > "$CFG/functions/rndis.usb0/ifname"
-echo "RNDIS"           > "$CFG/functions/rndis.usb0/os_desc/interface.rndis/compatible_id"
-echo "5162001"         > "$CFG/functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id"
-
-# CDC-ECM function. No OS desc needed - Linux/macOS recognise it via the
-# standard CDC class triplet, and Windows 10 1809+ ships an inbox driver.
-mkdir -p "$CFG/functions/ecm.usb0"
-echo "$ECM_HOST_MAC" > "$CFG/functions/ecm.usb0/host_addr"
-echo "$ECM_DEV_MAC"  > "$CFG/functions/ecm.usb0/dev_addr"
-echo "uecm%d"        > "$CFG/functions/ecm.usb0/ifname"
+echo "uncm%d"        > "$CFG/functions/ncm.usb0/ifname"
 
 # FunctionFS slot for adbd. The kernel exposes /dev/usb-ffs/adb once we
 # mount functionfs at the path; adbd opens ep0 from there to write the
@@ -160,16 +129,12 @@ mkdir -p "$CFG/functions/ffs.adb"
 mkdir -p "$FFS_MOUNT"
 mount -t functionfs adb "$FFS_MOUNT"
 
-# Single config holds all three functions. Composite layout means Linux
-# sees both network interfaces simultaneously - usb-br0 on the device
-# bridges traffic so reaching 10.42.1.2 works through either one.
+# Single config holds both functions.
 mkdir -p "$CFG/configs/c.1/strings/0x409"
 echo "Bridgething" > "$CFG/configs/c.1/strings/0x409/configuration"
 echo 250           > "$CFG/configs/c.1/MaxPower"
-ln -sf "$CFG/functions/rndis.usb0" "$CFG/configs/c.1/"
-ln -sf "$CFG/functions/ecm.usb0"   "$CFG/configs/c.1/"
-ln -sf "$CFG/functions/ffs.adb"    "$CFG/configs/c.1/"
-ln -sf "$CFG/configs/c.1"          "$CFG/os_desc/c.1"
+ln -sf "$CFG/functions/ncm.usb0" "$CFG/configs/c.1/"
+ln -sf "$CFG/functions/ffs.adb"  "$CFG/configs/c.1/"
 
 UDC=$(ls "$UDC_DIR" | head -n 1)
 if [[ -z "$UDC" ]]; then
@@ -181,22 +146,21 @@ fi
 # UDC here would expose the gadget before adbd has populated the FFS ep0
 # descriptors, leaving the ADB function half-registered.
 echo "gadget composed for $UDC (UDC bind deferred to adbd)"
-echo "  RNDIS    host=$RNDIS_HOST_MAC dev=$RNDIS_DEV_MAC ifname=urndis0 subnet=$RNDIS_DEV_IP/29"
-echo "  CDC-ECM  host=$ECM_HOST_MAC  dev=$ECM_DEV_MAC  ifname=uecm0  subnet=$ECM_DEV_IP/29"
+echo "  CDC-NCM  host=$NCM_HOST_MAC dev=$NCM_DEV_MAC ifname=uncm0 subnet=$NCM_DEV_IP/29"
 echo "  FFS-ADB  mounted at $FFS_MOUNT"
 
-# Generate per-serial .network files into /run/ (priority over /etc/).
+# Generate per-serial .network file into /run/ (priority over /etc/).
 # Done after gadget bring-up so this script is the single source of
 # truth for per-serial values: if the gadget script doesn't run, the
-# default static .network files from /etc/ apply.
+# default static .network file from /etc/ applies.
 mkdir -p /run/systemd/network
 
-cat > /run/systemd/network/11-usb-rndis.network <<NETWORK_RNDIS
+cat > /run/systemd/network/11-usb-ncm.network <<NETWORK_NCM
 [Match]
-Name=urndis*
+Name=uncm*
 
 [Network]
-Address=$RNDIS_DEV_IP/29
+Address=$NCM_DEV_IP/29
 DHCPServer=yes
 LinkLocalAddressing=no
 IPv6AcceptRA=no
@@ -213,33 +177,9 @@ EmitRouter=no
 
 [Link]
 RequiredForOnline=no
-NETWORK_RNDIS
+NETWORK_NCM
 
-cat > /run/systemd/network/12-usb-ecm.network <<NETWORK_ECM
-[Match]
-Name=uecm*
-
-[Network]
-Address=$ECM_DEV_IP/29
-DHCPServer=yes
-LinkLocalAddressing=no
-IPv6AcceptRA=no
-IPMasquerade=no
-ConfigureWithoutCarrier=yes
-EmitLLDP=no
-
-[DHCPServer]
-PoolOffset=$DHCP_POOL_OFFSET
-PoolSize=$DHCP_POOL_SIZE
-EmitDNS=no
-EmitNTP=no
-EmitRouter=no
-
-[Link]
-RequiredForOnline=no
-NETWORK_ECM
-
-# Reload networkd so it picks up the per-serial .network files. Failure
+# Reload networkd so it picks up the per-serial .network file. Failure
 # here is non-fatal - on first boot, networkd may not be running yet and
 # will read /run/systemd/network/ on its own start.
 if systemctl is-active --quiet systemd-networkd 2>/dev/null; then

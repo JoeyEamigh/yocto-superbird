@@ -39,7 +39,7 @@ just boot-kernel               # exit burn mode into the new image
 ```
 
 About 18 s after `boot-kernel`, the device is up at `bridgething.local`
-(mDNS via avahi-daemon) over USB-CDC-ECM (host-side NetworkManager
+(mDNS via avahi-daemon) over USB-CDC-NCM (host-side NetworkManager
 profile required, see [Iteration](#iteration)) and ready for `just
 push-webapp` / `just ssh`. The raw IP varies per device (per-serial /29
 in 10.42.1.x); mDNS handles that for you.
@@ -63,7 +63,7 @@ For interacting with a connected device:
 | Tool | Why |
 | --- | --- |
 | `uv` | runs the PEP-723 Python helper scripts in `scripts/` |
-| `nmcli` | sets up the USB-CDC-ECM profile so the device is reachable at `bridgething.local` |
+| `nmcli` | sets up the USB-CDC-NCM profile so the device is reachable at `bridgething.local` |
 | `avahi-daemon` | resolves `bridgething.local` host-side; the device IP itself varies per serial (/29 subnet) |
 | `ssh`, `rsync`, `scp` | the device-side helpers shell out to these |
 | `bishopdynamics/superbird-tool` (cloned, exported as `SUPERBIRD_TOOL_DIR`) | only used by `just boot-kernel` for u-boot bulkcmd |
@@ -123,17 +123,16 @@ About 2 seconds vs 30-60 for a full reflash.
 
 ## Iteration
 
-After the first boot the dev image brings up a USB-CDC-ECM gadget on
+After the first boot the dev image brings up a USB-CDC-NCM gadget on
 a per-serial /29 in the `10.42.1.x` range, advertised over mDNS as
 `bridgething.local`. The device-side gadget script derives the subnet
 nibble from the same serial-sha that produces its MAC, so two devices
 on one host land in disjoint subnets. Host side: the existing
-NetworkManager profile (`10.42.1.1/24` manual or DHCP via the device's
-own server, matched by MAC prefix `02:11:22:*` for legacy ECM-only or
-`02:11:44:*` for the multi-config gadget) reaches the right subnet;
-mDNS resolves `bridgething.local` to whichever IP the device landed at.
-Multi-device hosts use `bridgething-<short-serial>.local` (auto-
-published per device by avahi). Then:
+NetworkManager profile (DHCP via the device's own server, matched by
+MAC prefix `02:11:44:*`) reaches the right subnet; mDNS resolves
+`bridgething.local` to whichever IP the device landed at. Multi-device
+hosts use `bridgething-<short-serial>.local` (auto-published per
+device by avahi). Then:
 
 ```bash
 just ssh                                  # interactive shell
@@ -198,7 +197,7 @@ can reuse it as a clean BSP for non-bridgething userspace.
 
 | Image | Contains | Partition geometry |
 | --- | --- | --- |
-| `superbird-bsp-image` | kernel, busybox, openssh, USB-CDC-ECM gadget, BlueZ | stock AML MPT |
+| `superbird-bsp-image` | kernel, busybox, openssh, USB-CDC-NCM gadget, BlueZ | stock AML MPT |
 | `bridgething-prod-image` | + Mesa+Panfrost, weston, chromium kiosk, daemon, kiosk webapp, swupdate | stock AML MPT |
 | `bridgething-dev-image` | prod + cog, glmark2, dev tools, persistent `/opt/bridgething` overlay, debug auth | stock AML MPT |
 

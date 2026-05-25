@@ -1,5 +1,5 @@
 [Match]
-Name=urndis*
+Name=uncm*
 
 [Network]
 Address=10.42.1.2/29
