@@ -1,20 +1,7 @@
 #!/usr/bin/env -S uvx --quiet --from websocket-client --with requests python3
-"""
-Capture a chrome trace of a single user interaction on the device.
+"""capture a chrome trace of a single user interaction. requires `just cdp` running first.
 
-Workflow:
-  1. SSH tunnel exposes CDP at 127.0.0.1:9223 (run `just cdp` first).
-  2. Run this script. It opens a CDP WS, starts tracing, waits N seconds.
-  3. While it's recording, do the slow interaction on the device once.
-  4. Script saves a JSON trace you can load into chrome://tracing or the
-     Performance panel in DevTools (drag-and-drop the file in).
-
-Categories cover the layers we need to attribute a slow first-interaction:
-  - blink.user_timing, devtools.timeline: high-level framework events.
-  - v8, v8.execute, disabled-by-default-v8.compile: parse/compile/exec.
-  - cc, viz: compositor + raster. Catches Panfrost-side first-shader work.
-  - input, latencyInfo: input pipeline timing (touch through hit-test).
-  - loading, network, ipc: resource fetches + IPC under single-process.
+writes a json trace loadable in chrome://tracing or the devtools performance panel.
 """
 import json
 import os
@@ -45,15 +32,7 @@ CATEGORIES = ",".join([
     "toplevel",
     "blink",
 ])
-# Intentionally omitted:
-#   disabled-by-default-v8.cpu_profiler -- enabling this category causes V8
-#   to lazy-start its CPU profiler the first time JS executes after
-#   Tracing.start, which costs ~1.2s of CpuProfiler::StartProfiling +
-#   V8.CollectSourcePositions on a constrained device. That's pure observer
-#   effect: the cost only shows up because tracing is on. Without it, V8
-#   sample-attribution is gone but timing of EventDispatch / FunctionCall /
-#   HandleInputEvent / BeginMainFrame is unchanged - sufficient to see
-#   what's eating each first-of-type click.
+# omit v8.cpu_profiler: lazy-starts the cpu profiler on first js, observer effect ~1.2s on this device.
 
 def main():
     targets = requests.get(f"{CDP_HTTP}/json/list", timeout=5).json()

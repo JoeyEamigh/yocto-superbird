@@ -1,8 +1,5 @@
-SUMMARY = "Bun JavaScript runtime/toolkit (build-host binary)"
-DESCRIPTION = "Pre-built bun binary staged into the native sysroot for use \
-during Yocto recipe builds. The binary is fetched directly from the upstream \
-oven-sh/bun GitHub release and runs on the build host (BUILD_ARCH), not the \
-target. Used by webapp recipes that need 'bun install' + 'bun run build'."
+SUMMARY = "Bun JavaScript runtime"
+DESCRIPTION = "Pre-built bun binary staged into the native sysroot for webapp recipes."
 HOMEPAGE = "https://bun.com/"
 LICENSE = "MIT & LGPL-2.0-only & BSD-2-Clause & Zlib"
 
@@ -42,6 +39,5 @@ do_install() {
     install -m 0755 ${S}/bun ${D}${bindir}/bun
 }
 
-# the binary is a single statically linked executable; skip QA checks that
-# don't apply (no ELF symbols to track for cross deps, no debug info).
+# prebuilt single static binary; no debug info to split
 INSANE_SKIP:${PN} += "already-stripped"

@@ -3,7 +3,6 @@ Description=Bridgething chromium kiosk
 BindsTo=bridgething-weston.service
 After=bridgething-weston.service
 PartOf=bridgething-weston.service
-# Wants=bridgething.service
 
 [Service]
 Type=simple
@@ -12,17 +11,7 @@ Environment=XDG_RUNTIME_DIR=/run/weston
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_PATH=/usr/share/icons
-# Block chromium from setting nice < 0 on its UI / IO / GPU threads.
-# Chromium calls setpriority(-8) internally on those threads to win
-# scheduler attention against other browser tabs and OS background
-# work. On a 4x A53 SoC running everything else also at nice=0, those
-# -8 threads preempt kswapd and the squashfs-percpu decompression
-# workers - the very kernel work chromium needs to make progress on
-# its own faults. Stripping CAP_SYS_NICE makes setpriority(-N) return
-# EPERM (we run as root, so the rlimit alone wouldn't bite); LimitNICE
-# is the explicit floor; NoNewPrivileges keeps the boundary across
-# any future setuid helpers chromium might exec. With all three the
-# UI / IO / GPU threads stay at nice=0 alongside everything else.
+# block chromium's setpriority(-8) on UI/IO/GPU threads; cap drop + nice limit + nnp together
 CapabilityBoundingSet=~CAP_SYS_NICE
 AmbientCapabilities=
 LimitNICE=20

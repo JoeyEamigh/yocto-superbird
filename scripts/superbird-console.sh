@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Start/stop/restart the UART console agent with a PID file.
-# Avoids pkill -f patterns that match the caller's own shell cmdline.
+# start/stop/restart the uart console agent. uses a pid file so we don't pkill our own shell.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

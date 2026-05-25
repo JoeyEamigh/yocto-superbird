@@ -1,8 +1,5 @@
-SUMMARY = "Resource packer/unpacker for Amlogic Logo image files"
-DESCRIPTION = "Single-file Python tool that reads/writes Amlogic's \
-AmlResImg container format (used for the logo partition's BMP \
-splash assets). Used at build time to assemble logo.img from BMP \
-sources."
+SUMMARY = "Amlogic AmlResImg packer/unpacker"
+DESCRIPTION = "Single-file Python tool that assembles logo.img BMPs into Amlogic's AmlResImg container."
 HOMEPAGE = "https://github.com/bishopdynamics/aml-imgpack"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"

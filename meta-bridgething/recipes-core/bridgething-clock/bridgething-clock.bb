@@ -1,12 +1,5 @@
-SUMMARY = "Monotonic-forward clock guard for the Superbird"
-DESCRIPTION = "The Superbird has no battery-backed RTC, so every cold boot \
-starts at systemd's TIME_EPOCH (the build date) - months stale by ship time, \
-which breaks SSL cert validity for any HTTPS client on the device (browser \
-benchmarks, OTA fetches, anything else). bridgething-clock writes the \
-current time to /var/lib/clock-mtime periodically (and on shutdown) and \
-forces system time forward to that file's mtime on early boot. systemd's \
-TIME_EPOCH is the floor for fresh flashes; this service is the floor for \
-every boot after that."
+SUMMARY = "Monotonic-forward clock guard"
+DESCRIPTION = "No battery-backed RTC; this writes the current time to /var/lib/clock-mtime and forces system time forward to that mtime on early boot."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -27,7 +20,6 @@ SYSTEMD_SERVICE:${PN} = " \
 "
 SYSTEMD_AUTO_ENABLE = "enable"
 
-# coreutils-style date and stat are in busybox; no extra runtime dep.
 RDEPENDS:${PN} = ""
 
 do_install() {
@@ -42,12 +34,7 @@ do_install() {
     install -m 0644 ${S}/bridgething-clock-tick.timer \
         ${D}${systemd_system_unitdir}/bridgething-clock-tick.timer
 
-    # Mask systemd-timesyncd. bridgething-clock owns time semantics on this
-    # device; timesyncd has no path to an NTP source (no internet, no RTC) and
-    # holds the unit open ~45s on shutdown waiting for an in-flight NTP/DNS
-    # retry to time out. A /dev/null symlink in /etc/systemd/system makes
-    # systemd treat the unit as masked and refuse to start it, regardless of
-    # any wants symlinks shipped by the systemd package.
+    # mask systemd-timesyncd; we own clock semantics and timesyncd has no ntp path here
     install -d ${D}${sysconfdir}/systemd/system
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-timesyncd.service
 }

@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# Send a command to the Superbird console via the agent's FIFO, wait for
-# shell prompt to return, and print the command output (stripped of the
-# agent's pre-existing log + ANSI escapes).
-#
-# Usage:
-#   superbird-cmd.sh 'ls /'
-#   superbird-cmd.sh --timeout 10 'dmesg | head'
-#   superbird-cmd.sh --raw 'ls /'            # keep ANSI codes
+# send a command via the uart console agent's FIFO, wait for prompt, print output.
+# usage: superbird-cmd.sh [--timeout N] [--raw] 'command'
 set -euo pipefail
 
 LOG=/tmp/superbird-console.log

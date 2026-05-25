@@ -1,11 +1,5 @@
-SUMMARY = "Bridgething core runtime - shared by dev + prod images"
-DESCRIPTION = "Everything required for the device to boot to a usable \
-bridgething stack: BSP base files, USB-gadget for SSH, weston + Panfrost \
-GPU stack, bluetooth, audio, A/B OTA tooling, monotonic-forward clock. \
-The kernel ships the hardware drivers built-in (vmlinuz), so this \
-packagegroup carries no kernel-module-* RDEPENDS. Image-recipe-only \
-concerns (IMAGE_FEATURES, IMAGE_INSTALL extras, partition geometry) \
-live in the per-image .bb files."
+SUMMARY = "Bridgething core runtime"
+DESCRIPTION = "Everything required to boot to a usable bridgething stack. Shared by dev and prod images."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

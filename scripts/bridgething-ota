@@ -1,25 +1,7 @@
 #!/usr/bin/env bash
-# bridgething-ota - delta-OTA iteration helper.
+# delta-ota a booted device. drives `host-gateway push-update` against the daemon.
 #
-# Drives `host-gateway push-update` against the booted device's
-# network gateway. host-gateway opens an OtaBegin, streams the .swu
-# via OtaChunk events on the Bulk lane, and serves byte ranges from
-# the local .zck whenever the daemon's range proxy asks. The daemon
-# does the actual install via libswupdate, atomically flips
-# active_slot via the manifest's bootenv block, and reboots.
-#
-# Defaults target bridgething-update-dev's artifacts (dev image, with
-# the dev packagegroup + persistent /opt overlay). Pass --image prod
-# (or explicit --swu / --zck) to push the prod image instead.
-#
-# Usage:
-#   bridgething-ota [--image dev|prod] [--swu PATH] [--zck PATH]
-#                   [--url ws://...]
-#
-# Env:
-#   SUPERBIRD_HOST   device host (default bridgething.local mDNS; only
-#                    used when --url is not supplied). For multi-device
-#                    hosts pass bridgething-<short-serial>.local.
+# usage: bridgething-ota [--image dev|prod] [--swu PATH] [--zck PATH] [--url ws://...]
 
 set -euo pipefail
 

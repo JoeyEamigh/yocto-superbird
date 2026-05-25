@@ -1,26 +1,7 @@
 #!/bin/bash
-#
-# superbird-vnc-capture - grab a PNG of the panel via weston's VNC backend.
-#
-# Why this isn't just `vncdotool capture`: weston links neatvnc with the TLS
-# PACKAGECONFIG, which forces the auth handshake into the RA2 family
-# (RSA-AES-256 = 129, RSA-AES = 5, Apple-DH = 30). vncdotool and asyncvnc
-# do not implement any of these; the closest we have is TigerVNC, which
-# only talks GUI. So this drives a headless Xvfb + TigerVNC + xdotool +
-# ImageMagick chain.
-#
-# Defaults assume an SSH tunnel from a known device port to 127.0.0.1:5910
-# (the standard pattern: `ssh -L 5910:127.0.0.1:5900 root@<device>`).
-#
-# Usage:
-#   superbird-vnc-capture [output.png]
-#
-# Env knobs:
-#   SUPERBIRD_VNC_PORT - tunnel local port (default 5910)
-#   SUPERBIRD_VNC_HOST - tunnel local host (default 127.0.0.1)
-#   SUPERBIRD_VNC_USER - VNC username (default root; pam_permit on device)
-#   SUPERBIRD_VNC_PASS - VNC password (default root; pam_permit on device)
-#   XVFB_DISPLAY       - X display to use for the headless viewer (default :77)
+# grab a png of the panel via weston's vnc backend. requires an ssh tunnel to the device's :5900.
+# usage: superbird-vnc-capture [output.png]
+# env: SUPERBIRD_VNC_{PORT,HOST,USER,PASS}, XVFB_DISPLAY
 
 OUT="${1:-/tmp/superbird-panel.png}"
 PORT="${SUPERBIRD_VNC_PORT:-5910}"
@@ -43,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Wipe any stale instance on this display
+# wipe any stale instance on this display
 pkill -f "Xvfb ${DPY}\b" 2>/dev/null || true
 pkill -f "vncviewer.*${HOST}::${PORT}" 2>/dev/null || true
 sleep 0.5
@@ -57,7 +38,7 @@ DISPLAY="$DPY" vncviewer \
     "${HOST}::${PORT}" >/tmp/superbird-vnc-vncviewer.log 2>&1 &
 VV_PID=$!
 
-# Server-key-fingerprint dialog (RA2 verifies an RSA server key like SSH)
+# server-key-fingerprint dialog (RA2 verifies an rsa server key like ssh)
 FPWID=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     sleep 0.4
@@ -69,7 +50,7 @@ if [ -n "$FPWID" ]; then
     DISPLAY="$DPY" xdotool key --window "$FPWID" --clearmodifiers Return 2>/dev/null || true
 fi
 
-# Credentials dialog
+# credentials dialog
 sleep 1
 CRWID=""
 for _ in 1 2 3 4 5 6 7 8; do
@@ -85,7 +66,7 @@ if [ -n "$CRWID" ]; then
     DISPLAY="$DPY" xdotool key --window "$CRWID" --clearmodifiers Return
 fi
 
-# Let framebuffer settle - tigervnc enables continuous updates ~2-3s in
+# let framebuffer settle; tigervnc takes a few seconds to start continuous updates
 sleep 5
 
 DISPLAY="$DPY" import -window root "$OUT"

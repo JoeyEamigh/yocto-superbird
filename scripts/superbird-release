@@ -1,44 +1,7 @@
 #!/usr/bin/env bash
-# Push bridgething image artifacts to Cloudflare R2 under the layout
-# the swift companion (and bridgething.com bundle workflow) expect:
-#
-#   ota.bridgething.com/images/<channel>/<image-version>/bridgething-<variant>-image-superbird.swu
-#                                                       /bridgething-<variant>-image-superbird.squashfs-lz4.zck
-#                                                       /bridgething-<variant>-image-superbird-flashthing.zip
-#
-# The discover manifest at ota.bridgething.com/manifest.json is owned
-# by `bridgething.com/manifest:build`; this script does not touch it.
-# After uploading, edit `bridgething.com/manifest/bundles.yaml`,
-# regenerate, and `rclone copy` the manifest separately.
-#
-# Variant is what yocto produces (dev|prod). Channel is what the
-# companion uses (dev|stable). Mapping below mirrors the per-image
-# `BRIDGETHING_CHANNEL` defaults in `bridgething-image-base.inc`.
-#
-# Uploads go through rclone (S3 backend) because wrangler caps single
-# `r2 object put` at 300 MiB and the .zck / flashthing.zip artifacts
-# are larger. The same path the bundle.yml workflow uses on CI.
-#
-# Usage:
-#   superbird-release [variant]      # variant = dev | prod | all (default)
-#
-# Env:
-#   SUPERBIRD_RELEASE_VERSION  image version (e.g. 0.1.0). Falls back
-#                              to the .swu artifact mtime when unset.
-#                              Must equal what the running image
-#                              announces (BRIDGETHING_IMAGE_VERSION,
-#                              defaulting to DISTRO_VERSION = 0.1.0
-#                              today) or the companion's URL
-#                              derivation will miss the artifacts.
-#   R2_BUCKET                  R2 bucket name (default: bridgething-ota)
-#   RCLONE_REMOTE              rclone remote name pointing at the R2
-#                              account's S3 endpoint (default: r2)
-#
-# Requires `rclone` configured with an S3 remote against the
-# Cloudflare account that owns the bucket. Generate R2 access keys at
-# Cloudflare dashboard -> R2 -> Manage R2 API Tokens, then add an
-# `[r2]` block to ~/.config/rclone/rclone.conf with type=s3,
-# provider=Cloudflare, region=auto, endpoint=https://<account>.r2.cloudflarestorage.com.
+# upload bridgething image artifacts to r2 under images/<channel>/<image-version>/.
+# usage: superbird-release [dev|prod|all]
+# env: SUPERBIRD_RELEASE_VERSION, R2_BUCKET (default bridgething-ota), RCLONE_REMOTE (default r2).
 
 set -euo pipefail
 
@@ -61,12 +24,10 @@ if ! command -v rclone >/dev/null 2>&1; then
 fi
 
 if ! rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:$"; then
-  echo "rclone remote '${RCLONE_REMOTE}:' not configured. See script header for setup." >&2
+  echo "rclone remote '${RCLONE_REMOTE}:' not configured" >&2
   exit 2
 fi
 
-# variant -> channel mapping. Mirrors bridgething-image-base.inc and
-# the per-image bb overrides (dev image flips BRIDGETHING_CHANNEL=dev).
 variant_to_channel() {
   case "$1" in
     dev)  echo dev ;;
@@ -87,9 +48,7 @@ upload_variant() {
   local swu="$DEPLOY/bridgething-update-${variant}-superbird.swu"
   local zip="$DEPLOY/bridgething-${variant}-image-superbird-flashthing.zip"
 
-  # SUPERBIRD_ROOTFS_TYPE is per-image (prod=ext4, dev=squashfs-lz4 as
-  # of 2026-05-12). Resolve the .zck artifact by globbing rather than
-  # hardcoding the fstype.
+  # glob the .zck since the fstype varies per image variant
   local zck
   zck="$(ls "$DEPLOY/bridgething-${variant}-image-superbird".*.zck 2>/dev/null | grep -v zckheader | head -n1)"
 
@@ -108,9 +67,7 @@ upload_variant() {
   local version
   version="${SUPERBIRD_RELEASE_VERSION:-$(version_from_artifact "$swu")}"
   if [[ -z "${SUPERBIRD_RELEASE_VERSION:-}" ]]; then
-    echo "[release] WARN: SUPERBIRD_RELEASE_VERSION unset; using $version (artifact mtime)." >&2
-    echo "[release]       The companion derives URLs from the device's BRIDGETHING_IMAGE_VERSION;" >&2
-    echo "[release]       set SUPERBIRD_RELEASE_VERSION to that value (e.g. 0.1.0) before testing." >&2
+    echo "[release] WARN: SUPERBIRD_RELEASE_VERSION unset; using artifact mtime $version" >&2
   fi
 
   local prefix="images/${channel}/${version}"
@@ -129,12 +86,4 @@ else
   upload_variant "$VARIANT_ARG"
 fi
 
-cat <<EOF
-[release] artifacts uploaded.
-[release] next: regenerate the discover manifest at bridgething.com/manifest.json:
-[release]   - edit bridgething.com/manifest/bundles.yaml with this release
-[release]   - cd bridgething.com && bun run manifest:build
-[release]   - rclone copyto manifest/fixture.json ${RCLONE_REMOTE}:${R2_BUCKET}/manifest.json \\
-[release]       --header-upload "Content-Type: application/json" \\
-[release]       --header-upload "Cache-Control: public, max-age=300, must-revalidate"
-EOF
+echo "[release] artifacts uploaded. regenerate the discover manifest via bridgething.com bun run manifest:build, then rclone copyto manifest/fixture.json to manifest.json."

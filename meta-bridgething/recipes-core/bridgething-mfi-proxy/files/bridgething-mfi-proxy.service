@@ -2,8 +2,7 @@
 Description=Bridgething MFi i2c-3 dev proxy
 Documentation=https://github.com/JoeyEamigh/bridgething
 After=network.target
-# bridgething.service owns /dev/i2c-3 during iAP2 auth and the
-# backlight via the in-daemon ALS manager.
+# bridgething.service owns /dev/i2c-3 + backlight; conflict instead of racing
 Conflicts=bridgething.service bridgething-als.service
 ConditionPathExists=/dev/i2c-3
 ConditionPathExists=/sys/class/backlight/backlight/brightness
@@ -12,17 +11,12 @@ ConditionPathExists=/sys/class/backlight/backlight/brightness
 Type=simple
 Environment=RUST_LOG=info
 
-# Save current backlight brightness then blank the screen — bringup
-# iteration doesn't need the kiosk visible, and the saved value is
-# restored on stop/crash via ExecStopPost.
+# save + blank backlight; ExecStopPost restores even after a crash
 ExecStartPre=/bin/sh -c 'cat /sys/class/backlight/backlight/brightness > /run/bridgething-mfi-proxy.brightness'
 ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/backlight/backlight/brightness'
 
 ExecStart=/usr/bin/bridgething-mfi-proxy 0.0.0.0:9090 /dev/i2c-3 0x10
 
-# Always restore brightness on stop, including after a crash. /run is
-# tmpfs so the saved file vanishes on reboot — that's fine, the next
-# startup will resave from whatever the post-boot value is.
 ExecStopPost=/bin/sh -c '\
     if [ -r /run/bridgething-mfi-proxy.brightness ]; then \
         cat /run/bridgething-mfi-proxy.brightness \

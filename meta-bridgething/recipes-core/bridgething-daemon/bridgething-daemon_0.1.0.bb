@@ -1,28 +1,12 @@
 SUMMARY = "Bridgething daemon"
-DESCRIPTION = "Builds the bridgething Rust workspace from source and ships \
-the daemon at /usr/libexec/bridgething (the squashfs fallback). \
-/usr/bin/bridgething is a thin launcher that prefers \
-/opt/bridgething/daemon/bridgething.current (the writable overlay on the \
-settings partition, populated by the bundle's settings.ext4 and updated \
-in place by daemon hot-swap) and falls back to /usr/libexec/bridgething \
-when the overlay is unavailable. \
-\
-Also installs: a first-boot seeding oneshot that primes .current from \
-the fallback when missing, and a rollback service that promotes \
-.previous to .current when bridgething.service exceeds its restart \
-burst threshold. \
-\
-The systemd Type=notify unit and tmpfiles config that creates \
-/var/{,lib/}bridgething/{webapps,state} live alongside."
+DESCRIPTION = "Bridgething Rust daemon plus the /opt overlay launcher, first-boot seeder, and rollback service."
 HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 inherit cargo systemd pkgconfig
 
-# gitsm:// (not plain git://) so the swupdate-sys vendored submodule under
-# crates/swupdate-sys/vendor/swupdate gets fetched too - bindgen reads
-# its headers at build time. The submodule is shallow.
+# gitsm:// pulls the swupdate-sys vendored submodule; bindgen reads its headers at build time
 SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething.service \
            file://bridgething.conf \
@@ -34,63 +18,31 @@ SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=m
            file://bridgething-dev.conf"
 SRCREV = "${AUTOREV}"
 
-# Cargo fetches crates.io directly during do_compile. Trades full crate-mirror
-# reproducibility for ergonomic recipe maintenance: bumping SRCREV (or running
-# with AUTOREV) re-resolves Cargo.lock without regenerating a hand-tracked
-# ${BPN}-crates.inc via cargo-bitbake. Three knobs are needed:
-#   1. do_compile[network] = "1" - lift bitbake's network-task ban
-#   2. CARGO_DISABLE_BITBAKE_VENDORING = "1" - stop cargo_common.bbclass from
-#      redirecting source.crates-io to the empty ${CARGO_VENDORING_DIRECTORY}
-#   3. drop --frozen from CARGO_BUILD_FLAGS - --frozen implies --offline, so
-#      cargo would refuse network even after the previous two; --locked alone
-#      keeps the committed Cargo.lock authoritative
+# cargo fetches crates.io directly during do_compile. lift the network ban, stop bitbake
+# vendoring redirect, and drop --frozen (which implies --offline). --locked keeps Cargo.lock authoritative.
 do_compile[network] = "1"
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS:remove = "--frozen"
 
-# Build only the daemon binary from the workspace. Without -p, cargo
-# would compile every workspace member (bridgething-mfi-proxy,
-# tools/codegen, packages/adapter-node, ...). The default feature set
-# enables `chrome` (host-side CDP hosting); on the device we want the
-# `superbird` feature instead, which is systemd-aware and pulls ALS +
-# mic. --locked keeps Cargo.lock authoritative now that --frozen is
-# gone (--frozen also implied --offline, hence the :remove above).
+# only the daemon from the workspace; superbird feature gates systemd + ALS + mic
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
 DEPENDS = "dbus swupdate systemd clang-native alsa-lib"
 
-# bindgen runs on the build host during `swupdate-sys`'s build.rs and
-# needs a host-runnable libclang. `clang-native` from meta-clang
-# stages it; `LIBCLANG_PATH` is what bindgen probes. `BINDGEN_EXTRA_CLANG_ARGS`
-# points clang at the cross sysroot so transitively-included system
-# headers (stdint, sys/socket, ...) parse against the target's glibc -
-# the alternative is clang chasing the host's headers and tripping on
-# `__float128` typedefs that only the x86 builtin set understands.
-# Paired with the `--target=$TARGET` clang_arg in `swupdate-sys/build.rs`
-# this gives a consistent target-triple view both sides of the bindgen run.
+# bindgen runs on the build host; point libclang at the cross sysroot or it picks up host glibc headers
 export LIBCLANG_PATH = "${STAGING_LIBDIR_NATIVE}"
 export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
 
-# headless_chrome's transitive build dep auto_generate_cdp shells out to
-# rustfmt to pretty-print the generated CDP bindings. rust-native doesn't
-# stage rustfmt into the recipe sysroot (only target rust does), so set the
-# crate's documented opt-out env var instead of pulling in a rustfmt-native
-# layer override - the formatting is cosmetic, not load-bearing.
+# auto_generate_cdp would shell out to rustfmt, which isn't in the recipe sysroot
 export DO_NOT_FORMAT = "1"
 
-# bridgething-rollback.service is shipped via FILES but deliberately not
-# in SYSTEMD_SERVICE: it's pulled in by bridgething.service's OnFailure=,
-# never enabled or wanted by anything. systemd loads it on demand when
-# the trigger fires; symlinking it into a .wants/ would just queue it on
-# every boot, which isn't what we want.
+# rollback unit is OnFailure-pulled, never enabled
 SYSTEMD_SERVICE:${PN} = "bridgething.service bridgething-opt-init.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
 RDEPENDS:${PN} += "bridgething-stock-webapp bridgething-opt-overlay swupdate systemd"
 
-# Override cargo.bbclass's default cargo_do_install — that one drops every
-# workspace binary into /usr/bin. We want the real binary at /usr/libexec
-# and the wrapper script at /usr/bin/bridgething.
+# default cargo_do_install drops every workspace binary into /usr/bin; we want libexec + a wrapper
 do_install() {
     install -d ${D}${libexecdir}
     install -m 0755 ${B}/target/${CARGO_TARGET_SUBDIR}/bridgething \
@@ -120,9 +72,7 @@ do_install() {
         ${D}${systemd_system_unitdir}/bridgething.service.d/dev.conf
 }
 
-# Split the dev-only drop-in into its own sub-package so the prod image
-# never gets trace logging or UART log mirroring. packagegroup-bridgething-dev
-# RDEPENDS this package, which pulls in ${PN} as well.
+# dev-only drop-in lives in its own subpackage so prod never gets trace logging
 PACKAGES =+ "${PN}-dev-config"
 
 FILES:${PN} = " \
@@ -138,10 +88,7 @@ FILES:${PN} = " \
 
 FILES:${PN}-dev-config = "${systemd_system_unitdir}/bridgething.service.d/dev.conf"
 RDEPENDS:${PN}-dev-config = "${PN}"
-SUMMARY:${PN}-dev-config = "Dev-image drop-in: trace RUST_LOG + log mirror to /dev/console"
+SUMMARY:${PN}-dev-config = "Bridgething daemon dev drop-in"
 
-# Cargo.toml's [profile.release] has strip = "symbols", so the binary lands
-# already stripped. Yocto's QA flags this because it would normally split
-# debug symbols off into a -dbg package; honor the upstream strip choice
-# instead of forcing strip = "none" + duplicating Yocto's strip pass.
+# upstream Cargo.toml strips the binary; honor that instead of forcing yocto's strip pass
 INSANE_SKIP:${PN} += "already-stripped"

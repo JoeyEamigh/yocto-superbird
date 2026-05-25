@@ -1,8 +1,5 @@
-SUMMARY = "Minimal Panfrost GPU smoke test - EGL surfaceless + GLES2 triangle"
-DESCRIPTION = "Opens an EGL_PLATFORM_SURFACELESS_MESA context, renders a \
-cyan triangle on an orange background into a 64x64 FBO, prints GL strings \
-and reads back center/corner pixels. Binary-level proof that Panfrost +\
-Mesa userspace stack accelerates anything."
+SUMMARY = "Minimal Panfrost GPU smoke test"
+DESCRIPTION = "Opens an EGL surfaceless context, renders a triangle to a 64x64 FBO, and reads pixels back to confirm Panfrost + Mesa accelerate."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

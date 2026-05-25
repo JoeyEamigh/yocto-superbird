@@ -3,17 +3,9 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyserial>=3.5"]
 # ///
-"""Hold RTS deasserted (HIGH at FT232 pin) so the Superbird reset line stays
-released while nothing else is using the UART.
+"""hold RTS deasserted so the soc reset line stays released. wiring: FT232 RTS -> reset pin, active low.
 
-Wiring assumption: FT232 RTS -> Superbird SoC reset pin (active-low),
-                   no hardware pull-up, so RTS state = reset state.
-
-Run via `just reset-hold` (long-running; Ctrl-C to stop) or
-`just reset-pulse` for a one-shot reset pulse.
-
-Device discovery: $SUPERBIRD_UART_DEV wins; otherwise the first
-/dev/serial/by-id/* matching usb-FTDI*FT232*; otherwise /dev/ttyUSB0.
+device discovery: $SUPERBIRD_UART_DEV, then /dev/serial/by-id/usb-FTDI*FT232*, then /dev/ttyUSB0.
 """
 import argparse
 import glob
@@ -40,7 +32,7 @@ def open_port(device: str) -> serial.Serial:
 
 def hold(device: str) -> None:
     ser = open_port(device)
-    ser.rts = False  # deassert RTS -> pin HIGH -> reset released
+    ser.rts = False  # pin high, reset released
     print(f"holding RTS deasserted on {device} (reset released). Ctrl-C to stop.")
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
@@ -57,7 +49,7 @@ def hold(device: str) -> None:
 
 def pulse(device: str, duration_ms: int = 100) -> None:
     ser = open_port(device)
-    ser.rts = True  # assert RTS -> pin LOW -> reset
+    ser.rts = True  # pin low, in reset
     time.sleep(duration_ms / 1000.0)
     ser.rts = False  # release
     print(f"pulsed reset for {duration_ms}ms on {device}")

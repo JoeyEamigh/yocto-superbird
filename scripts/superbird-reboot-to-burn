@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
-# Explicitly drop the device into USB burn mode for the next boot.
-#
-# As of the consolidated-images build, env.txt defaults to
-# want_boot=kernel and bridgething-boot-confirm no longer flips it
-# back to burn after each kernel boot. Plain `systemctl reboot` from
-# Linux now stays in the kernel branch. To enter burn mode (e.g. for
-# `flashthing-cli` to write a fresh image), this helper sets
-# want_boot=burn via libubootenv-bin's fw_setenv and then reboots.
-#
-# Round-trip back to kernel after a flash is the existing
-# `superbird-boot-kernel.sh` (via burn-mode bulkcmd).
+# set want_boot=burn via fw_setenv and reboot. round-trip back via superbird-boot-kernel.sh.
 
 set -euo pipefail
 

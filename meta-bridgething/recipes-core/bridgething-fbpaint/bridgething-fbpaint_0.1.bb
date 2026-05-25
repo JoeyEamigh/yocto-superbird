@@ -1,9 +1,5 @@
-SUMMARY = "Display handoff smoke test - paint 4-band pattern at u-boot fb_addr"
-DESCRIPTION = "After kernel boot, mmap /dev/mem at 0x1f800000 (u-boot's \
-framebuffer) and overwrite the splash with a horizontal red/green/blue/white \
-test pattern. If the bands show on the panel, the bootloader-handoff display \
-patches worked end to end (panel still alive, OSD plane still scanning the \
-bootloader fb, DSI/encoder/CRTC config preserved)."
+SUMMARY = "Display handoff smoke test"
+DESCRIPTION = "Mmap /dev/mem at u-boot's fb_addr and overwrite the splash with an RGB/W band pattern to verify bootloader handoff."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

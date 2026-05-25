@@ -1,6 +1,5 @@
-SUMMARY = "fastfetch - system info tool, branded for Spotify Car Thing"
-DESCRIPTION = "Bridgething image ships a /etc/fastfetch/config.jsonc that \
-brands the header as 'Spotify Car Thing (Superbird)'."
+SUMMARY = "fastfetch system info tool"
+DESCRIPTION = "Bridgething-branded fastfetch with a custom config + ASCII logo."
 HOMEPAGE = "https://github.com/fastfetch-cli/fastfetch"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=2090e7d93df7ad5a3d41f6fb4226ac76"
@@ -14,11 +13,7 @@ SRCREV_fastfetch = "4a61cdb1c9e4044ee959751e00bac1266dc6ebf9"
 
 inherit cmake pkgconfig
 
-# Keep the build lean - fastfetch has dozens of optional probes that drag
-# in heavy deps (ImageMagick, RPM, ddcutil, libelf, dconf, etc.). For a
-# 512-MiB embedded image we want only the cheap stuff. Disabled probes
-# print "(unavailable)" if their info is requested but don't break the
-# binary.
+# trim optional probes; disabled ones print "(unavailable)" but don't break the binary
 EXTRA_OECMAKE = " \
     -DENABLE_VULKAN=OFF \
     -DENABLE_WAYLAND=ON \

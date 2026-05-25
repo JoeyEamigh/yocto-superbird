@@ -1,43 +1,13 @@
-# Phase 2 image class: emit a stock-Amlogic-partition-shaped flash zip.
+# image class: emit a stock-aml-partition-shaped flashthing zip after do_image_complete.
 #
-# Image recipes that inherit this class get a do_flashthing_zip task
-# after do_image_complete. The task:
-#   - mkbootimg's the kernel + dtb into a v0 boot.img
-#   - Stages every partition we flash under its stock-shaped name
-#     (bootloader.dump, fip_a.dump, fip_b.dump, logo.dump,
-#     boot_a.dump, boot_b.dump, system_a.ext2, system_b.ext2)
-#   - Renders meta.json from SUPERBIRD_PART_TABLE +
-#     SUPERBIRD_OTA_SYSTEM_*_OFFSET vars (per-variant geometry)
-#   - Emits both a full-flash zip and an env-only iteration zip
+# parameters:
+#   SUPERBIRD_PART_TABLE             - name:start:size triples for the linux mbr overlay
+#   SUPERBIRD_OTA_BOOT_{A,B}_OFFSET  - where to write boot.img in OTA
+#   SUPERBIRD_OTA_SYSTEM_{A,B}_OFFSET - rootfs offsets in OTA
+#   SUPERBIRD_FLASH_VIA_AML_PARTITIONS - "yes" = restorePartition; "no" = writeLargeMemory at offsets
+#   SUPERBIRD_ROOTFS_TYPE            - rootfs deploy extension (ext4 / squashfs-lz4 / ...)
 #
-# Per-image partition geometry is parameterized via:
-#   SUPERBIRD_PART_TABLE
-#       Comma-separated name:start:size triples for the MBR overlay.
-#       Mirrors the stock AML MPT (516 MB system slots / 256 MB
-#       settings / 2 GB data). dev + prod images share the same
-#       geometry now that squashfs makes the lean shape enough for
-#       the kitchen-sink dev install.
-#   SUPERBIRD_OTA_BOOT_A_OFFSET / SUPERBIRD_OTA_BOOT_B_OFFSET
-#       Where to write boot.img in OTA. AML MPT positions for
-#       boot_a / boot_b (Linux can't see them as block devices, so
-#       we write via raw byte offsets on /dev/mmcblk0).
-#   SUPERBIRD_OTA_SYSTEM_A_OFFSET / SUPERBIRD_OTA_SYSTEM_B_OFFSET
-#       Where to write the rootfs in OTA. Both images use the
-#       stock AML MPT system_a / system_b offsets.
-#   SUPERBIRD_FLASH_VIA_AML_PARTITIONS
-#       "yes" → flash uses restorePartition system_a / system_b
-#       (bound to AML MPT geometry; this is what every variant
-#       uses now). "no" → writeLargeMemory at SUPERBIRD_OTA_SYSTEM_*
-#       offsets (legacy code path for non-stock geometries; kept
-#       for posterity but no current image uses it).
-#   SUPERBIRD_ROOTFS_TYPE
-#       Deploy-file extension for the rootfs blob (e.g. "ext4",
-#       "squashfs-zst"). Image recipes pin this to match their
-#       IMAGE_FSTYPES. flashthing pulls
-#       `<image-link-name>.<rootfs_ext>` from DEPLOY_DIR_IMAGE.
-#
-# First-flash behavior: A and B slots get identical content. Phase 3
-# OTAs flip slots and only touch the inactive partitions.
+# first-flash writes identical content to slots A and B. OTAs flip the inactive slot.
 
 SUPERBIRD_PART_TABLE ?= "system_a:0x10600000:0x2040b000,system_b:0x3120b000:0x2040b000,settings:0x52e16000:0x10000000,data:0x63616000:0x859ea000"
 
@@ -87,12 +57,6 @@ python do_flashthing_zip () {
     sys_a_off = d.getVar('SUPERBIRD_OTA_SYSTEM_A_OFFSET')
     sys_b_off = d.getVar('SUPERBIRD_OTA_SYSTEM_B_OFFSET')
 
-    # SUPERBIRD_ROOTFS_TYPE is the deploy-file extension for the rootfs
-    # image - "ext4", "squashfs-zst", "squashfs", etc. Image recipes pin
-    # this to match their IMAGE_FSTYPES choice. Default ext4 keeps
-    # backwards compatibility with the original geometry; squashfs
-    # variants set "squashfs-zst" (or similar) to point flashthing at the
-    # right file in DEPLOY_DIR_IMAGE.
     rootfs_ext = d.getVar('SUPERBIRD_ROOTFS_TYPE') or "ext4"
 
     stage = os.path.join(workdir, "flashthing-stage")
@@ -126,15 +90,7 @@ python do_flashthing_zip () {
     ], check=True)
     shutil.copy(boot_a_path, os.path.join(stage, "boot_b.dump"))
 
-    # Deploy boot.img + dtb + system.img stable symlinks for
-    # swupdate's bbclass to pick up (it expects file names matching
-    # its sw-description "filename =" entries). system.img points at
-    # the rootfs file under whatever extension SUPERBIRD_ROOTFS_TYPE
-    # selected - keeps the OTA path filesystem-agnostic. dtb is the
-    # raw board DTB so OTA can update dtbo_a / dtbo_b alongside
-    # boot_a / boot_b (u-boot loads the DTB from dtbo_X, not from
-    # boot.img's second-stage, so a kernel update without a matching
-    # dtbo update would leave the new kernel parsing the old DTB).
+    # stable boot.img / dtb / system.img symlinks for swupdate to pick up
     boot_named = os.path.join(deploy, f"{image_name}.boot.img")
     boot_link  = os.path.join(deploy, f"{image_link_name}.boot.img")
     shutil.copy(boot_a_path, boot_named)
@@ -149,13 +105,7 @@ python do_flashthing_zip () {
         os.unlink(dtb_link)
     os.symlink(os.path.basename(dtb_named), dtb_link)
 
-    # Last-image-wins generic aliases. The dev OTA recipe
-    # (bridgething-update.bb) consumes these directly. The prod
-    # OTA recipe (bridgething-update-prod.bb) does NOT - it stages
-    # its own symlinks in a per-recipe subdir of DEPLOY_DIR_IMAGE
-    # against image-link-name-prefixed aliases, sidestepping the
-    # race when both image variants build in parallel and the
-    # last-finished flashthing_zip wins these names.
+    # last-image-wins generic aliases; the delta OTA stages per-recipe to avoid this race
     for stable, target in (
         ("boot.img",    os.path.basename(boot_link)),
         ("dtb",         os.path.basename(dtb_link)),
@@ -166,14 +116,7 @@ python do_flashthing_zip () {
             os.unlink(p)
         os.symlink(target, p)
 
-    # Stock u-boot's bootm doesn't pick up the dtb from boot.img's
-    # second-stage slot - it always loads the dtb at fdt_addr,
-    # which by default has a stale stock multi-dtb left over from
-    # u-boot's own preboot. We dodge this by ALSO writing the raw
-    # dtb to dtbo_a so env can `amlmmc read dtbo_a $fdt_addr ...`
-    # before bootm. dtbo_a is 4MB and our dtb is ~50KB; we just
-    # copy verbatim with no padding (amlmmc read uses byte count,
-    # so trailing partition bytes don't matter).
+    # stock u-boot bootm ignores boot.img's second-stage dtb; ship the raw dtb to dtbo_X
     shutil.copy(inputs['dtb'], os.path.join(stage, "dtbo_a.dump"))
     shutil.copy(inputs['dtb'], os.path.join(stage, "dtbo_b.dump"))
 
@@ -184,10 +127,7 @@ python do_flashthing_zip () {
     shutil.copy(inputs['logo'],       os.path.join(stage, "logo.dump"))
     shutil.copy(inputs['env'],        os.path.join(stage, "env.txt"))
 
-    # Stage the rootfs under both names. For the AML-partition path
-    # (production), restorePartition system_a / system_b each consume
-    # a copy. For the offset path (dev), only one copy is needed but
-    # we keep both filenames for symmetry with the prod zip layout.
+    # both slots get the same rootfs; restorePartition consumes them separately
     rootfs_a = os.path.join(stage, "system_a.ext2")
     rootfs_b = os.path.join(stage, "system_b.ext2")
     shutil.copy(inputs['rootfs'], rootfs_a)
@@ -217,18 +157,13 @@ python do_flashthing_zip () {
         })
 
     if use_aml:
-        # Production: AML MPT positions for system_a / system_b.
-        # restorePartition walks the MPT to find the right offset
-        # and size - must match the stock 516MB system_a / system_b.
         for name in ("system_a", "system_b"):
             steps.append({
                 "type": "restorePartition",
                 "value": {"name": name, "data": {"filePath": f"{name}.ext2"}},
             })
     else:
-        # Dev: bigger system slots overlap the AML MPT region
-        # (system_b lives where MPT had settings + data start).
-        # writeLargeMemory at our chosen offsets - bypasses MPT.
+        # bigger system slots overlap the aml mpt region; writeLargeMemory at our offsets
         steps.append({
             "type": "writeLargeMemory",
             "value": {
@@ -252,28 +187,19 @@ python do_flashthing_zip () {
         {"type": "bulkcmd", "value": "saveenv"},
     ]
 
-    # Invalidate settings + data partitions so x-systemd.makefs
-    # runs mkfs.ext4 on first boot. writeLargeMemory of 1 MB of
-    # zeros at each partition start kills the ext4 superblock,
-    # which is what x-systemd.makefs probes for. The previous AML
-    # path used `amlmmc erase` here, but those bulkcmds routinely
-    # hung USB before completing - leaving stale runtime state on
-    # the settings partition across reflashes.
+    # zero the first 1MB of settings + data so x-systemd.makefs re-mkfs's them on first boot
     empty_path = os.path.join(stage, "empty-1m.bin")
     with open(empty_path, "wb") as f:
         f.write(b"\x00" * (1024 * 1024))
 
     if use_aml:
-        # Offsets come from SUPERBIRD_PART_TABLE (matches the AML
-        # MPT byte-for-byte; same values restorePartition uses
-        # under the hood for system_a / system_b above).
+        # offsets come from the part_table; same values restorePartition uses above
         invalidate_offsets = {}
         for entry in part_table.split(","):
             name, off, _sz = entry.split(":")
             invalidate_offsets[name.strip()] = int(off.strip(), 0)
     else:
-        # Dev path: per-recipe env vars (geometry diverges from the
-        # AML MPT, can't be parsed out of part_table).
+        # non-aml geometry diverges from the part_table; per-recipe env vars instead
         invalidate_offsets = {}
         for name, env_var in (
             ("settings", "SUPERBIRD_INVALIDATE_SETTINGS_OFFSET"),

@@ -1,9 +1,5 @@
-SUMMARY = "Bridgething A/B slot management CLI (testing helper)"
-DESCRIPTION = "Shell wrapper around fw_setenv + swupdate-client \
-that lets us drive A/B slot operations end-to-end from the device. \
-The bridgething daemon will eventually take this over and expose \
-the same surface over the gateway WebSocket; this script is the \
-canonical CLI surface in the meantime."
+SUMMARY = "Bridgething A/B slot management CLI"
+DESCRIPTION = "Shell wrapper around fw_setenv and swupdate-client for driving A/B slot operations from the device."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

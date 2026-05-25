@@ -1,12 +1,5 @@
 SUMMARY = "Auto-launch chromium as the bridgething kiosk under weston"
-DESCRIPTION = "Ships the systemd unit + launcher script that exec chromium \
-in --kiosk mode bound to the running weston session, with CDP \
-unconditionally on 0.0.0.0:9222 (LAN-debug-anywhere; the only network \
-on this device is the USB-CDC-NCM gadget) and chrome's first paint \
-matched to the bootloader splash so the boot transition is seamless. \
-Target URL + extra chrome flags are sourced from \
-/etc/default/bridgething-kiosk so iteration doesn't require an image \
-rebuild."
+DESCRIPTION = "Systemd unit + launcher that exec chromium --kiosk on the running weston session. CDP on 9222. Target URL and flags from /etc/default/bridgething-kiosk."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -44,6 +37,5 @@ FILES:${PN} = " \
     ${sysconfdir}/default/bridgething-kiosk \
 "
 
-# Treat /etc/default/bridgething-kiosk as a config file so on-target
-# edits aren't clobbered by package upgrades during swupdate.
+# conffile so on-target edits survive package upgrades
 CONFFILES:${PN} = "${sysconfdir}/default/bridgething-kiosk"

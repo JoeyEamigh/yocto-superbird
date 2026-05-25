@@ -3,19 +3,11 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyserial>=3.5"]
 # ///
-"""Single long-lived UART agent for the Superbird FT232 link.
+"""long-lived uart agent. one pyserial handle, rts=False so opening doesn't pulse reset.
 
-Keeps ONE pyserial handle open with rts=False (reset released), so nothing
-causes spurious reset pulses from ftdi_sio default-open behavior. Reads
-incoming UART bytes and appends to a log file; reads from a FIFO and
-forwards to UART. Run as a daemon; clients drive input by `echo x > fifo`.
+reads uart bytes into a log file; forwards bytes from a fifo to uart. clients echo to the fifo.
 
-Usage:
-    superbird-console-agent.py --log /tmp/superbird-console.log \
-                               --input /tmp/superbird-console.in
-
-Device discovery: $SUPERBIRD_UART_DEV wins; otherwise the first
-/dev/serial/by-id/* matching usb-FTDI*FT232*; otherwise /dev/ttyUSB0.
+device discovery: $SUPERBIRD_UART_DEV, then /dev/serial/by-id/usb-FTDI*FT232*, then /dev/ttyUSB0.
 """
 import argparse
 import glob
@@ -69,9 +61,7 @@ def main() -> None:
                 log.write(data)
 
     def writer() -> None:
-        # FT232 at 115200 without hardware flow control drops characters if we
-        # write faster than the device's line discipline consumes from the
-        # meson UART's 64-byte RX FIFO. Pace sends in 16-char bursts.
+        # pace 16-char bursts; FT232 + meson 64-byte rx fifo drops chars without flow control.
         while not stop.is_set():
             try:
                 fd = os.open(args.input, os.O_RDONLY)

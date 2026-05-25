@@ -1,45 +1,16 @@
 # yocto-superbird Justfile
-#
-# Two image flavors live here:
-#   - bridgething (kas/bridgething.yml): kernel + bridgething daemon +
-#     chromium kiosk. The full Spotify-replacement image.
-#   - bsp        (kas/bsp.yml):          kernel + busybox + ssh only.
-#     Minimum useful BSP for kernel hacking or as a base for non-
-#     bridgething userspace.
-#
-# Builds run inside the official kas container so the host doesn't
-# need a Yocto-grade toolchain. Default container engine is docker;
-# override with KAS_CONTAINER_ENGINE=podman.
 
 default := "bridgething"
-
-# Container engine kas-container will use. docker / podman both work.
 export KAS_CONTAINER_ENGINE := env_var_or_default('KAS_CONTAINER_ENGINE', 'docker')
-
-# Path to the flashthing-cli binary. `cargo install flashthing-cli`
-# drops it on $PATH; override here if you want to point at a local
-# checkout's debug build instead.
 flashthing := env_var_or_default('FLASHTHING_CLI', 'flashthing-cli')
 
 # --- Build ---
 
-# Fetch/checkout layers (no build).
+# Fetch/checkout layers
 checkout target=default:
   kas-container checkout kas/{{target}}.yml
 
-# Build the named image set inside the kas container. Cold first build
-# pulls almost everything from yocto.24hgr.love (the public sstate +
-# downloads mirror configured in kas/base.yml). Subsequent builds hit
-# the local sstate-cache + ccache. Use `bsp` for a kernel-only image
-# without the bridgething daemon.
-#
-# The `dev-local` target swaps the daemon recipes' SRC_URI for a host-
-# side bridgething checkout via externalsrc. kas-container only mounts
-# the kas working dir, so we additionally bind-mount the host path read
-# out of kas/dev-local.yml at the same path inside the container - that
-# keeps BRIDGETHING_LOCAL identical on host and inside the container so
-# externalsrc resolves the same way in both places. The path lives only
-# in kas/dev-local.yml (gitignored); nothing host-specific is committed.
+# Build the named image set inside the kas container.
 build target=default:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -58,8 +29,7 @@ build target=default:
   fi
   kas-container "${args[@]}" build kas/{{target}}.yml
 
-# Drop into a bitbake shell inside the container. Useful for `bitbake
-# -c devshell <recipe>`, manifest inspection, dependency analysis.
+# Drop into a bitbake shell inside the container.
 shell target=default:
   kas-container shell kas/{{target}}.yml
 
@@ -67,10 +37,7 @@ shell target=default:
 clean-build:
   rm -rf build
 
-# Drop poky-layout symlinks under sources/ so the vscode bitbake
-# extension's "pokyFolder = bitbake/.." assumption finds meta/ and
-# meta-poky/. sources/ is gitignored, so re-run after a fresh checkout
-# (or after `kas-container purge`).
+# Drop poky-layout symlinks under sources/ for the vscode bitbake extension.
 vscode-setup:
   test -d sources/openembedded-core || just checkout
   ln -sfn openembedded-core/meta sources/meta
@@ -78,24 +45,10 @@ vscode-setup:
   @echo "symlinks ready: sources/{meta,meta-poky}"
 
 # --- Cache server ---
-# Push local sstate-cache up to the rsync daemon at the cache server.
-# The cache server only ships sstate (compiled artifacts) - source
-# tarballs / git mirrors stay on upstream URLs. The intent is to
-# spare other builders the multi-hour chromium / wpewebkit / cog
-# compile; downloads link rot is rare enough that the 50+ GB DL_DIR
-# isn't worth permanent hosting.
-#
-# --ignore-existing skips hashes already on the server (sstate is
-# content-addressed and never updates in place). Override host/port
-# via the YOCTO_CACHE_* env vars for a different cache target.
 
 cache_host    := env_var_or_default('YOCTO_CACHE_HOST', '10.1.10.10')
 cache_port    := env_var_or_default('YOCTO_CACHE_RSYNC_PORT', '8733')
 
-# Push the locally-produced sstate-cache to the cache server. Run
-# this after a successful local build so the next cold build (yours
-# or anyone else's downstream) hits the mirror instead of rebuilding
-# from source.
 push-sstate:
   rsync -ah --info=progress2 --ignore-existing --partial --append-verify \
     --port={{cache_port}} \
@@ -104,65 +57,33 @@ push-sstate:
 
 # --- Flash ---
 
-# Flash a full image to the device (~30s for squashfs prod, ~60s dev).
-# Device must be in burn mode (USB enumerates as 1b8e:c003). After a
-# successful flash, `just boot-kernel` exits burn mode into the new
-# kernel.
+# Flash a full image to the device.
 flash image="bridgething-dev-image":
   {{flashthing}} build/tmp/deploy/images/superbird/{{image}}-superbird-flashthing.zip
 
-# Env-only reflash (~2s). For when you only changed env.txt.
+# Env-only reflash.
 flash-env image="bridgething-dev-image":
   {{flashthing}} build/tmp/deploy/images/superbird/{{image}}-superbird-flashthing-env-only.zip
 
 # --- Release / install (no-build dev path) ---
-# Distribution path for fellow bridgething devs who only want a recent
-# image to iterate against (push-webapp / ssh, plus `just push` from
-# the bridgething repo for daemon binaries) without standing up the
-# full Yocto toolchain. Producer side runs `release`
-# after a clean build to push artifacts; consumer side runs
-# `install-dev` / `install-prod` from a clone of this repo.
 
-# Push the most recently built dev + prod flashthing zips, .swu, and
-# .zck to Cloudflare R2 under the layout the swift companion expects
-# (images/<channel>/<image-version>/). Pass `dev` or `prod` to scope;
-# `all` does both. Requires rclone with an `[r2]` S3 remote configured;
-# see scripts/superbird-release for env knobs.
 release *args:
   scripts/superbird-release {{args}}
 
-# Full iteration loop: upload artifacts, recompose the first-flash
-# bundle from the freshly-built daemon binary, regenerate the discover
-# manifest, and republish manifest.json. Overwrites the matching
-# (channel, image-version) slot on R2 - re-run as you iterate. Default
-# variant is `prod` (channel=stable). Pass `dev` for the dev channel.
-# Requires SUPERBIRD_RELEASE_VERSION (e.g. 0.1.0); see
-# scripts/superbird-publish for the rest of the env knobs.
 publish variant="prod":
   scripts/superbird-publish {{variant}}
 
-# Pull the latest dev image from the OTA manifest and flash it. Skips
-# the Yocto build entirely. Requires curl + jq + flashthing-cli;
-# device must be in burn mode (1b8e:c003). Run `just boot-kernel`
-# after to exit burn mode into the new image.
+# pull latest dev image from ota manifest and flash it
 install-dev:
   scripts/superbird-install dev
 
-# Same as install-dev but pulls the prod image variant.
+# pull latest prod image from ota manifest and flash it. For prod testing
 install-prod:
   scripts/superbird-install prod
 
 # --- Device helpers ---
-# Scripts live in scripts/ as the canonical source of truth. Override
-# SUPERBIRD_HOST / SUPERBIRD_UART_DEV / SUPERBIRD_TOOL_DIR via env when
-# calling. SUPERBIRD_TOOL_DIR is the path to a clone of bishopdynamics'
-# superbird-tool repo (only used by `boot-kernel`).
 
-# SSH into the device over USB-CDC-NCM (defaults to bridgething.local via
-# mDNS; the per-serial subnet derivation in the gadget script means the
-# raw IP varies per device). Pass through any args (commands, scp-style
-# targets, etc). Override with SUPERBIRD_HOST=bridgething-<short-serial>
-# .local for multi-device hosts.
+# SSH into the device over USB-CDC-NCM. Splits args - watch out for quoting
 ssh *args:
   scripts/superbird-ssh {{args}}
 
@@ -170,48 +91,34 @@ ssh *args:
 console subcmd="status":
   scripts/superbird-console.sh {{subcmd}}
 
-# Send a single u-boot command via superbird-tool's --bulkcmd. Output
-# lands on UART (watch via the console agent).
+# Send a single command via the uart console agent.
 cmd *args:
   scripts/superbird-cmd.sh {{args}}
 
-# Hold the FT232 RTS line deasserted (reset released) for the lifetime
-# of this command. Foreground; Ctrl-C to stop.
+# Hold the FT232 RTS line deasserted (reset released) for the lifetime of this command. Foreground
 reset-hold:
   scripts/superbird-reset-hold.py
 
-# One-shot reset pulse. Default 200ms is plenty for the SoC to latch.
+# One-shot reset pulse.
 reset-pulse duration_ms="200":
   scripts/superbird-reset-hold.py --pulse --duration-ms {{duration_ms}}
 
-# Boot the Superbird into our mainline kernel ONCE. Device must be in
-# USB burn mode (1b8e:c003). The way you exit burn mode after a flash.
+# Boot the Superbird into our mainline kernel from stock u-boot.
 boot-kernel:
   scripts/superbird-boot-kernel.sh
 
 # Drop a running device back into USB burn mode for the next boot.
-# Uses fw_setenv from libubootenv-bin (env.txt defaults to
-# want_boot=kernel; this is the explicit "I want to flash" path).
 reboot-to-burn:
   scripts/superbird-reboot-to-burn
 
-# Push a webapp bundle into /var/bridgething/webapps/<name>/. Default
-# name = basename of <local>.
+# Push a webapp bundle into /var/bridgething/webapps/<name>/.
 push-webapp local name="":
   scripts/bridgething-push-webapp {{local}} {{name}}
 
-# SSH-tunnel chromium's CDP from the device's 127.0.0.1:9222 to the
-# host. chromium >= M111 ignores --remote-debugging-address=non-localhost
-# silently, so this tunnel is the path to chrome://inspect from the host.
+# SSH-tunnel chromium's CDP from the device's 127.0.0.1:9222 to the host.
 cdp port="9223":
   scripts/bridgething-cdp {{port}}
 
-# Delta-OTA from a booted device. Drives `host-gateway push-update`
-# against the device's network gateway: opens OtaBegin, streams .swu
-# via OtaChunk, serves .zck byte ranges back through the daemon's
-# loopback range proxy. The daemon owns install + reboot. Defaults
-# to the dev image (bridgething-update-dev); pass --image prod for
-# the prod variant. Skips the burn-mode + flashthing loop so
-# iteration is much faster than `just flash`.
+# Delta-OTA from a booted device.
 ota *args:
   scripts/bridgething-ota {{args}}

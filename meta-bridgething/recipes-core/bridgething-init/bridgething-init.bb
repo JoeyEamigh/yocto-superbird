@@ -1,18 +1,5 @@
-SUMMARY = "Bridgething first-boot init: /etc/superbird metadata + BT alias"
-DESCRIPTION = "Ships the meta.json template consumed by the \
-bridgething daemon (read at /etc/superbird, which symlinks into \
-/var/lib/superbird/meta.json on the settings partition), plus a \
-oneshot systemd unit that re-renders meta.json from the template \
-on every boot - patching in efuse-derived fields (btMac, \
-serialNumber) - and seeds the bluez alias so the device \
-advertises as 'Car Thing (SN: xxxx)'. \
-\
-Package-scope literals (name, version, fccId, icId, modelName) \
-are baked in here at do_install; per-image state (channel, \
-variant, version, build id/date) is filled in by \
-IMAGE_PREPROCESS_COMMAND. The every-boot re-render keeps both \
-honest after a daemon push without depending on the settings \
-partition being wiped."
+SUMMARY = "Bridgething first-boot init"
+DESCRIPTION = "Renders /var/lib/superbird/meta.json from a template each boot (patching in efuse fields) and seeds the bluez alias."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -30,32 +17,14 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "superbird-init.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-# superbird-init.sh uses only POSIX shell builtins + hexdump + sed +
-# grep + busybox-awk-equivalent utilities. The full gawk binary (and
-# its libmpfr.so dep, ~4 MB combined) was historically pulled here as
-# a "just in case" bound; the script never invokes any gawk-specific
-# extension. Removing gawk drops mpfr from the rootfs by the same
-# transitive trim.
+# script only needs busybox utilities; gawk + mpfr stay out of the rootfs
 RDEPENDS:${PN} = ""
 
-# All @VAR@ placeholders in the template that depend on per-build
-# or per-image state (channel, image variant, image version, build
-# id, build date) are filled in by IMAGE_PREPROCESS_COMMAND in
-# bridgething-image-base.inc. The package-level recipe substitutes
-# only the package-scope literals (distro name, fcc id, model name,
-# etc.) and leaves the rest as raw placeholders. This keeps the
-# package recipe's sstate stable across builds even when DATETIME
-# changes, and puts the build-date stamp on the build host's clock
-# (the Car Thing has no battery-backed RTC, so any boot-time stamp
-# would be a lie).
-
+# package-scope literals only here; per-image state lands via IMAGE_PREPROCESS_COMMAND
 do_install() {
     install -d ${D}${datadir}/superbird
 
-    # Render the meta.json template. Each @VAR@ placeholder maps to
-    # a bitbake variable. Done with sed (not file://...;subdir=...)
-    # because we need the values fresh at do_install time, not at
-    # SRC_URI fetch time.
+    # render the @VAR@ placeholders at do_install so the values are fresh, not fetch-time
     sed \
         -e "s|@DISTRO_NAME@|${DISTRO_NAME}|g" \
         -e "s|@DISTRO_VERSION@|${DISTRO_VERSION}|g" \
@@ -68,30 +37,17 @@ do_install() {
         ${S}/superbird-meta.json.in \
         > ${D}${datadir}/superbird/meta.json.in
 
-    # Init script runs once per boot, populates the efuse fields.
     install -d ${D}${libexecdir}
     install -m 0755 ${S}/superbird-init.sh ${D}${libexecdir}/superbird-init
 
-    # Systemd unit.
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${S}/superbird-init.service \
         ${D}${systemd_system_unitdir}/superbird-init.service
 
-    # /etc/superbird → /var/lib/superbird/meta.json. The init
-    # script materializes /var/lib/superbird/meta.json from the
-    # template on first boot.
     install -d ${D}${sysconfdir}
     ln -s ../var/lib/superbird/meta.json ${D}${sysconfdir}/superbird
 
-    # SSH host-key plumbing. /etc/ssh is on the read-only system
-    # partition, so openssh's sshd_check_keys can't write keys
-    # there. Two-part fix:
-    #   1. /etc/default/ssh sets SYSCONFDIR=/var/lib/ssh, which
-    #      sshd_check_keys uses as the keygen target.
-    #   2. /etc/ssh/ssh_host_*_key{,.pub} symlinks point at the
-    #      writable /var/lib/ssh/ copies, so the default
-    #      sshd_config (which references /etc/ssh/ssh_host_*_key)
-    #      transparently follows through to the real keys.
+    # /etc/ssh is ro; SYSCONFDIR=/var/lib/ssh and symlinks make sshd's keygen target writable
     install -d ${D}${sysconfdir}/default
     install -m 0644 ${S}/default-ssh ${D}${sysconfdir}/default/ssh
 

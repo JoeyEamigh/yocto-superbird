@@ -1,8 +1,5 @@
 SUMMARY = "Bridgething swupdate runtime config"
-DESCRIPTION = "/etc/swupdate.cfg pointing the uboot-env handler at \
-our /etc/fw_env.config (which superbird-base-files ships), plus a \
-swupdate.sh conf.d drop-in that enables the (stable, slot_a|slot_b) \
-selectors via -a so IPC clients can request them."
+DESCRIPTION = "/etc/swupdate.cfg and a conf.d drop-in enabling the slot selectors needed by IPC clients."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

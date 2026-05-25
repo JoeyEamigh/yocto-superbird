@@ -1,6 +1,5 @@
 [Unit]
-Description=Superbird Bluetooth (BCM20703A2)
-Documentation=https://github.com/JoeyEamigh/nixos-superbird
+Description=Superbird Bluetooth
 DefaultDependencies=no
 After=systemd-tmpfiles-setup.service
 Before=bluetooth.service
@@ -8,34 +7,15 @@ Wants=bluetooth.service
 RequiresMountsFor=/lib/firmware
 
 [Service]
-# Type=notify so bluetooth.service (ordered After this unit via Before=)
-# does not start until the script has programmed the efused BDADDR into
-# the BCM controller. With Type=simple bluetoothd starts the moment
-# ExecStart spawns; it then races the script and discovers hci0 at the
-# patchram-default address. After hciconfig reset reprograms the address,
-# bluetoothd never re-reads BD_ADDR via mgmt and ends up keyed to a
-# different MAC than the kernel and the iAP2 IdentificationInformation
-# transport-component param. NotifyAccess=all so a systemd-notify subprocess
-# in the script can emit READY=1.
+# Type=notify so bluetoothd waits for BDADDR programming before discovering hci0
 Type=notify
 NotifyAccess=all
 ExecStart=/usr/bin/superbird-bluetooth
-# Belt-and-braces: even with Type=notify ordering, bluetoothd has been
-# observed to start with a cached patchram-default BDADDR when the
-# notify-barrier or first-run btattach races (script then exits 1 +
-# RestartSec=2 retries; bluetoothd is already up by then). Force a
-# restart of bluetoothd after our service is fully ready so the mgmt
-# cache always reflects the post-program BDADDR. try-restart is a
-# no-op when bluetoothd is not yet running, so it cannot create a
-# bring-up cycle.
+# force bluetoothd to re-read mgmt cache after our BDADDR write
 ExecStartPost=/bin/systemctl try-restart bluetooth.service
 Restart=on-failure
 RestartSec=2
-# Kill the entire cgroup at stop so that the daemonized gpioset
-# processes (REG_ON HIGH + DEV_WAKE LOW) get cleaned up. Otherwise a
-# subsequent ExecStart sees "Device or resource busy" when it tries
-# to re-acquire those gpio lines. The script's own release_gpios()
-# also handles this, but cgroup cleanup is the right systemd hygiene.
+# cgroup cleanup so daemonized gpioset workers release REG_ON / DEV_WAKE
 KillMode=control-group
 
 [Install]

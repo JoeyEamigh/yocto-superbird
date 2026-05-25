@@ -1,30 +1,10 @@
 #!/usr/bin/env bash
-# Push a bridgething webapp bundle into the user-installed webapps root.
-#
-# Webapps live under /var/bridgething/webapps/<name>/ on the data partition.
-# The bridgething daemon's WebappRegistry discovers bundles here at runtime
-# (and shadows same-named built-ins under /usr/share/bridgething/webapps/),
-# so the dev loop is: rsync the static bundle here, then either point the
-# active webapp at it via the gateway protocol's `Webapps::SwitchTo` or
-# restart the daemon to pick it up on next boot.
-#
-# Usage:
-#   bridgething-push-webapp <local-path>             # rsync into /var/bridgething/webapps/$(basename <local-path>)/
-#   bridgething-push-webapp <local-path> <name>      # rsync into /var/bridgething/webapps/<name>/
-#
-# Examples:
-#   bridgething-push-webapp ./dist                   # serves /var/bridgething/webapps/dist
-#   bridgething-push-webapp ./build spotify          # serves /var/bridgething/webapps/spotify
+# rsync a webapp bundle to /var/bridgething/webapps/<name>/. default name = basename of local path.
 
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-    cat <<EOF >&2
-usage: bridgething-push-webapp <local-path> [<remote-name>]
-
-Pushes <local-path> via rsync to /var/bridgething/webapps/<name>/ on the
-device (default name is the basename of <local-path>).
-EOF
+    echo "usage: bridgething-push-webapp <local-path> [<remote-name>]" >&2
     exit 2
 fi
 
@@ -39,10 +19,6 @@ fi
 HOST="${SUPERBIRD_HOST:-bridgething.local}"
 DEST="/var/bridgething/webapps/${NAME}"
 
-# Trailing slash on src + no trailing slash on dest means "copy contents
-# of src into dest", which is what people writing webapps expect: index.html
-# at the top of the served path. Without --delete, replacing app.js with
-# app.<hash>.js would leave the unhashed copy serving stale content.
 exec rsync -avz --delete \
     -e "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR" \
     "${LOCAL%/}/" "root@${HOST}:${DEST}/"

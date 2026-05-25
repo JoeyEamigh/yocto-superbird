@@ -1,13 +1,5 @@
-SUMMARY = "TMD2772 ambient light → pwm-backlight bridge (legacy fallback)"
-DESCRIPTION = "Tiny C daemon that polls the TMD2772 clear-photodiode \
-raw count from IIO and adjusts /sys/class/backlight/backlight/brightness \
-on a log curve. The bridgething daemon now owns the backlight policy \
-in-process (core::als::AlsManager); this binary stays in the rootfs \
-as an installed-but-disabled fallback for `bridgething-mfi-proxy` \
-sessions and ad-hoc bringup. Enable manually with \
-`systemctl enable bridgething-als` if running without bridgething.service \
-(e.g. on a base image where the Rust daemon is not started). Otherwise \
-the two would fight for the same /sys/class/backlight node."
+SUMMARY = "TMD2772 ambient light to pwm-backlight bridge"
+DESCRIPTION = "Small C daemon that polls the TMD2772 clear-photodiode count and adjusts the backlight on a log curve."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -21,8 +13,7 @@ S = "${UNPACKDIR}"
 inherit systemd
 
 SYSTEMD_SERVICE:${PN} = "bridgething-als.service"
-# Disabled by default: bridgething.service owns the backlight via the
-# in-daemon ALS manager.
+# disabled by default; bridgething.service owns the backlight in-daemon
 SYSTEMD_AUTO_ENABLE:${PN} = "disable"
 
 do_compile() {
@@ -39,12 +30,7 @@ do_install() {
     install -d ${D}${sysconfdir}
     install -m 0644 ${S}/bridgething-als.conf ${D}${sysconfdir}/bridgething-als.conf
 
-    # Pre-populated systemd-backlight save so the first boot (before
-    # bridgething-als has its first sample) restores a sane brightness
-    # instead of 8 (below the LP8556 cutoff). systemd-backlight will
-    # overwrite this on every clean shutdown with whatever the brightness
-    # was at the time, so this file only matters for the very first boot
-    # (or any boot where the file was deleted).
+    # seed systemd-backlight so first-boot restores above the LP8556 cutoff
     install -d ${D}${localstatedir}/lib/systemd/backlight
     echo 96 > ${D}${localstatedir}/lib/systemd/backlight/platform-backlight:backlight:backlight
 }

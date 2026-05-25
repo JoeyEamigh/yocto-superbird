@@ -16,9 +16,6 @@
  *
  * Usage:  bridgething-fbpaint [pattern]   (default: "hbands")
  *         bridgething-fbpaint --help      (list patterns)
- *
- * Pattern catalogue and the artifact each one is designed to expose
- * are documented in notes/display/test-pattern-artifacts-2026-04-25.md.
  */
 
 #include <fcntl.h>

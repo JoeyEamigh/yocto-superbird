@@ -1,4 +1,4 @@
-SUMMARY = "Bridgething OTA artifact (.swu) - delta against bridgething-dev-image"
+SUMMARY = "Bridgething dev-image delta OTA"
 
 require ${THISDIR}/bridgething-update-delta.inc
 

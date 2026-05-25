@@ -1,9 +1,5 @@
-SUMMARY = "Spotify Car Thing stock webapp, served as a built-in bridgething webapp"
-DESCRIPTION = "Builds the thinglabs-maintained stock Spotify webapp from \
-source using bun, then stages the produced dist tree at \
-/usr/share/bridgething/webapps/stock/. The bridgething daemon discovers it \
-as a built-in webapp (read-only, cannot be uninstalled) and uses 'stock' as \
-the boot-default active app."
+SUMMARY = "Stock Spotify webapp as a built-in bridgething webapp"
+DESCRIPTION = "Builds the thinglabs stock webapp with bun and stages it at /usr/share/bridgething/webapps/stock/."
 HOMEPAGE = "https://github.com/thinglabsoss/superbird-webapp"
 LICENSE = "CLOSED"
 
@@ -13,12 +9,11 @@ SRCREV = "${AUTOREV}"
 
 DEPENDS = "bun-native"
 
-# Pure data package once built: produced dist is plain HTML/JS/CSS.
 inherit allarch
 
 WEBAPP_DIR = "${datadir}/bridgething/webapps/stock"
 
-# bun install hits the npm registry; allow the fetch task to use the network.
+# bun install hits the npm registry
 do_compile[network] = "1"
 BUN_HOME = "${WORKDIR}/bun-home"
 
@@ -28,9 +23,6 @@ do_compile() {
     install -d ${BUN_HOME}
     export HOME=${BUN_HOME}
 
-    # --frozen-lockfile pins to the committed bun.lock; SRCREV pins the
-    # lockfile itself, so the resolved tree is deterministic for a given
-    # recipe revision.
     bun install --frozen-lockfile --no-progress
     bun pm trust --all
     bun run build

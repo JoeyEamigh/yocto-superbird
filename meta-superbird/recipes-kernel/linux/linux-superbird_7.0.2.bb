@@ -1,4 +1,4 @@
-SUMMARY = "Mainline Linux 7.0.2 for Spotify Car Thing (Superbird)"
+SUMMARY = "Mainline Linux 7.0.2 for Superbird"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
@@ -8,8 +8,7 @@ LINUX_VERSION = "7.0.2"
 LINUX_VERSION_EXTENSION = "-superbird"
 PV = "${LINUX_VERSION}+git${SRCPV}"
 
-# Pinned to v7.0.2. linux-7.0.y is the stable maintenance branch; switch to
-# AUTOINC against this branch when we want to ride point releases.
+# pinned to v7.0.2; flip to AUTOINC against linux-7.0.y to ride point releases
 SRCREV = "a703eaaf8bd68c416d20f907435038f409ace6e4"
 SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;branch=linux-7.0.y;name=linux \
            file://superbird.cfg \
@@ -31,12 +30,7 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
 
 inherit kernel
 
-# kernel.bbclass forces S = ${STAGING_KERNEL_DIR} so that compile/install
-# tasks can run from the shared kernel-source dir. With wrynose's git
-# fetcher unpack layout, the actual source lands in ${UNPACKDIR}/${BP}
-# instead, and do_symlink_kernsrc only moves source into STAGING_KERNEL_DIR
-# when S != STAGING_KERNEL_DIR. Point S at the real unpack location so the
-# move runs and quilt finds files to patch.
+# point S at the real unpack dir so do_symlink_kernsrc moves source into STAGING_KERNEL_DIR
 S = "${UNPACKDIR}/${BP}"
 
 KERNEL_VERSION_SANITY_SKIP = "1"
@@ -44,8 +38,7 @@ KERNEL_VERSION_SANITY_SKIP = "1"
 COMPATIBLE_MACHINE = "^superbird$"
 
 do_configure() {
-    # Drop our board DTS into the in-tree Amlogic DT dir and register it in the
-    # Makefile. Idempotent so re-runs don't duplicate the Makefile entry.
+    # drop the board dts into the in-tree amlogic dt dir + register it (idempotent)
     install -m 0644 ${UNPACKDIR}/meson-g12a-superbird.dts \
         ${S}/arch/arm64/boot/dts/amlogic/meson-g12a-superbird.dts
     if ! grep -q 'meson-g12a-superbird.dtb' ${S}/arch/arm64/boot/dts/amlogic/Makefile; then
@@ -53,7 +46,7 @@ do_configure() {
             ${S}/arch/arm64/boot/dts/amlogic/Makefile
     fi
 
-    # Start from the in-tree aarch64 defconfig, overlay our fragment, resolve.
+    # in-tree arm64 defconfig + our fragment
     oe_runmake -C ${S} O=${B} defconfig
     if [ -s ${UNPACKDIR}/superbird.cfg ]; then
         ${S}/scripts/kconfig/merge_config.sh -m -O ${B} ${B}/.config ${UNPACKDIR}/superbird.cfg

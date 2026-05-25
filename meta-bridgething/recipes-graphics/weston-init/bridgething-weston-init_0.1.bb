@@ -1,12 +1,5 @@
 SUMMARY = "Boot-weston systemd unit + weston.ini variants"
-DESCRIPTION = "Starts the Weston DRM-backend compositor at boot bound to \
-DSI-1 480x800@60 (rotated 270° for landscape). Ships two weston.ini \
-variants in the -desktop and -kiosk subpackages; image recipes RDEPEND \
-on exactly one. Both variants set cursor-theme=blank so weston picks \
-up the fully-transparent xcursor theme shipped by blank-cursor.bb. \
-Also ships /usr/bin/wsh — a wrapper that exports \
-WAYLAND_DISPLAY/XDG_RUNTIME_DIR so spawned clients connect to the \
-running compositor."
+DESCRIPTION = "Starts Weston bound to DSI-1 480x800 rotated. Ships -desktop and -kiosk weston.ini subpackages and the wsh wrapper for Wayland-aware spawned clients."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -20,15 +13,9 @@ SRC_URI = " \
 "
 S = "${UNPACKDIR}"
 
-# blank-cursor ships the transparent xcursor theme that weston.ini
-# references; pull it via RDEPENDS so weston-init can never land on a
-# rootfs without the theme it asks for.
 RDEPENDS:${PN} = "weston dbus blank-cursor"
 
-# Per-image variant packages. RCONFLICTS prevents both from landing in
-# the same image. Image recipes RDEPEND on -desktop or -kiosk, never
-# the parent directly. Each variant's pkg_postinst creates the right
-# /etc/weston.ini symlink.
+# image recipes pick -desktop or -kiosk; RCONFLICTS forbids both at once
 PACKAGES =+ "${PN}-desktop ${PN}-kiosk"
 
 RDEPENDS:${PN}-desktop   = "${PN}"
@@ -56,9 +43,7 @@ do_install() {
     install -m 0644 ${S}/weston.ini       ${D}${sysconfdir}/weston-dev.ini
     install -m 0644 ${S}/weston-kiosk.ini ${D}${sysconfdir}/weston-kiosk.ini
 
-    # The dev env file lands at /etc/default/bridgething-weston only
-    # when -desktop is installed (created via postinst below). The .source
-    # copy lives at a non-conflicting path so the parent can ship it.
+    # dev env file is staged here; -desktop's postinst copies it into /etc/default
     install -d ${D}${datadir}/bridgething
     install -m 0644 ${S}/bridgething-weston-dev.env \
         ${D}${datadir}/bridgething/bridgething-weston-dev.env

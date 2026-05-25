@@ -1,10 +1,5 @@
 SUMMARY = "Andri's Main Loop"
-DESCRIPTION = "Andri's Main Loop - pinned to v0.3.0 because poky/wrynose's \
-weston (15.0.0) requires aml >= 0.3.0, < 0.4.0 but meta-oe/wrynose ships \
-aml 1.0.0. weston upstream main hasn't bumped to aml 1.x yet either, so \
-the floor here is real upstream coordination, not a recipe-side bug. Drop \
-this recipe + the bridgething.conf PREFERRED_VERSION override once weston \
-takes aml 1.x. (b83f3576 is the v0.3.0 tag commit on github.com/any1/aml.)"
+DESCRIPTION = "Pinned to v0.3.0 because weston 15.0.0 requires aml >= 0.3.0, < 0.4.0; drop once weston takes aml 1.x."
 HOMEPAGE = "https://github.com/any1/aml"
 LICENSE = "ISC"
 LIC_FILES_CHKSUM = "file://COPYING;md5=e6f3cfaa39204b96e14b68b9d50d3e4e"

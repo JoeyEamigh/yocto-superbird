@@ -1,17 +1,7 @@
 #!/bin/sh
-# Memory / swap / chromium pressure sampler for the Car Thing.
-#
-# Streams a timestamped trace of vmstat/zram/chromium-tree stats at 5 Hz
-# so UI tap stalls can be correlated with memory or scheduler events.
-# PSI is not built into this kernel, so we lean on /proc/vmstat deltas +
-# per-pid VmSwap + zram io_stat instead.
-#
-# Output format: one event per line. Leading column is monotonic ms,
-# second column is event type, rest is type-specific payload.
-#
-# Usage on device:
-#   /tmp/mem-sampler.sh [duration_seconds] > /tmp/mem-sampler.log
-#   (default duration: 60s)
+# memory / swap / chromium pressure sampler. streams vmstat + zram + per-pid stats at 5 Hz.
+# usage: /tmp/mem-sampler.sh [duration_seconds] > /tmp/mem-sampler.log  (default 60s)
+# output: one event per line, "<ms> <type> <payload>".
 
 set -u
 
@@ -30,10 +20,7 @@ echo "# uname=$(uname -r) memtotal_kb=$(awk '/MemTotal/ {print $2}' /proc/meminf
 echo "# zram_disksize=$(cat /sys/block/zram0/disksize 2>/dev/null) zram_comp=$(cat /sys/block/zram0/comp_algorithm 2>/dev/null)"
 echo "# columns: ts_ms event payload..."
 
-# Cumulative counters (initialized once, updated each loop iteration in
-# the SAME shell — no subshell). Done as plain global vars because
-# busybox sh has no `local` keyword. One awk pass over /proc/vmstat per
-# tick keeps work cheap; otherwise nine awks add 50+ ms per sample.
+# global vars only; busybox has no `local`. one awk per tick beats nine.
 read_vmstat() {
     eval $(awk '
         $1=="pswpin"        { printf "_pswpin=%d ",        $2 }
@@ -64,15 +51,13 @@ if [ -r /sys/block/zram0/stat ]; then
     PREV_ZRAM_RD=$1
     PREV_ZRAM_WR=$5
 fi
-# /proc/stat first line: cpu user nice system idle iowait irq softirq steal
+# /proc/stat: cpu user nice system idle iowait irq softirq steal
 read _ U N S I IO IR SI ST _ < /proc/stat
 PREV_CPU_BUSY=$(( U + N + S + IR + SI + ST ))
 PREV_CPU_IOWAIT=$IO
 PREV_CPU_TOTAL=$(( U + N + S + I + IO + IR + SI + ST ))
 
-# Per-pid prev counters keyed in flat vars (busybox has no assoc arrays).
-# Format: PID_<pid>_MAJFLT, PID_<pid>_MINFLT, PID_<pid>_UTIME, PID_<pid>_STIME.
-# Initialized lazily when a pid is first seen.
+# per-pid prev counters as flat vars. busybox has no assoc arrays.
 
 label_for_pid() {
     pid=$1
@@ -197,9 +182,7 @@ emit_pid() {
     anon=$(awk '/^RssAnon:/ {print $2; exit}' /proc/$pid/status)
     file=$(awk '/^RssFile:/ {print $2; exit}' /proc/$pid/status)
     state=$(awk '/^State:/ {print $2; exit}' /proc/$pid/status)
-    # /proc/<pid>/stat: chop comm at last ')'. After that, fields are:
-    # state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime stime
-    # = positional 1..13 in the trimmed string.
+    # /proc/<pid>/stat trimmed of comm: state ppid pgrp ... minflt cminflt majflt cmajflt utime stime
     rest=$(sed 's/.*) //' /proc/$pid/stat 2>/dev/null)
     set -- $rest
     minflt=$8
@@ -226,7 +209,7 @@ emit_pid() {
         $rel $pid "$label" "$state" \
         $rss $anon $file $swap \
         $d_maj $d_min $d_u $d_s
-    # Stack snapshot: cheap, useful only when CPU was burned during this tick.
+    # stack snapshot only when this pid burned cpu this tick
     if [ $d_u -gt 0 ] || [ $d_s -gt 0 ] || [ $d_maj -gt 0 ]; then
         if [ -r /proc/$pid/stack ]; then
             top=$(head -3 /proc/$pid/stack 2>/dev/null | awk '{printf "%s|", $2}')
@@ -235,8 +218,7 @@ emit_pid() {
     fi
 }
 
-# Discover the chromium pid set fresh each tick — renderers spawn/die.
-# Match either /usr/bin/chromium (browser) or any chromium-bin child.
+# rediscover chromium pids each tick; renderers spawn and die.
 discover_chromium_pids() {
     pgrep -f chromium 2>/dev/null
 }
