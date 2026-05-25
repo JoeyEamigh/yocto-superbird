@@ -1,47 +1,53 @@
-SUMMARY = "Superbird FIP signing toolkit (BL33 -> signed boot.bin), build-host only"
-DESCRIPTION = "Bundles ThingLabsOSS/superbird-fip-tools (fip-rebuild.sh, \
-flash_boot_partition.py, the public spotify aml-user-key.sig, and the in-repo \
-stock.bootloader.bin) together with LibreELEC's amlogic-boot-fip g12a \
-components (incl. the prebuilt aml_encrypt_g12a). Installed into the native \
-sysroot so superbird-uboot's do_deploy can pack + sign a flashable boot.bin \
-with no out-of-tree tooling. Never installed into the target image."
+SUMMARY = "Superbird FIP signing tool (fip-tool), build-host only"
+DESCRIPTION = "Builds ThingLabsOSS/superbird-fip-tools' pure-Go fip-tool as a \
+native build-host binary, plus the public spotify aml-user-key.sig and the \
+in-repo stock.bootloader.bin. superbird-uboot's do_deploy uses `fip-tool sign` \
+(native stage-1 assembly + native signing, no aml_encrypt_g12a, no \
+amlogic-boot-fip clone) to pack u-boot into a signed FIP, and `fip-tool flash \
+ours --dry-run` to pair it with the stock BL2. Never installed into the target."
 HOMEPAGE = "https://github.com/ThingLabsOSS/superbird-fip-tools"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=bfcc9fa683b26332011592972f78cafd"
 
-# Two upstreams: the toolkit (unpacked at ${S}), plus LibreELEC's
-# amlogic-boot-fip layered into the amlogic-boot-fip/ subdir (where setup.sh
-# would normally clone it). destsuffix=${BP} keeps the toolkit at the default
-# S; oe-core sets S = ${UNPACKDIR}/${BP} itself, so we don't assign S.
-SRC_URI = " \
-    git://github.com/ThingLabsOSS/superbird-fip-tools.git;protocol=https;branch=main;name=fiptools;destsuffix=${BP} \
-    git://github.com/LibreELEC/amlogic-boot-fip.git;protocol=https;branch=master;name=abf;destsuffix=${BP}/amlogic-boot-fip \
-"
-SRCREV_fiptools = "49bd1df250e54bcd5fbbb73c2d7b2eee538891ce"
-SRCREV_abf = "42d372123631066fb77fbcbb612dc3eb41a3f6f9"
-SRCREV_FORMAT = "fiptools_abf"
+# Single upstream now: the toolkit. The old amlogic-boot-fip clone + vendored
+# x86 aml_encrypt_g12a are gone — fip-tool sign assembles + signs the FIP in
+# pure Go from embedded board assets. destsuffix=${BP} lands it at the default
+# S (${UNPACKDIR}/${BP}), so we don't assign S.
+SRC_URI = "git://github.com/ThingLabsOSS/superbird-fip-tools.git;protocol=https;branch=main;destsuffix=${BP}"
+SRCREV = "a591304f7c5c8298059fd1200b8e4ca98c0620ac"
+
+# Build out-of-source: the default B==S would collide with the fip-tool/ source
+# subdir (go build -o ${B}/fip-tool vs the ${S}/fip-tool package dir).
+B = "${WORKDIR}/build"
 
 inherit native
+DEPENDS = "go-native"
 
-# Prebuilt vendor blobs + scripts — nothing to configure or compile.
+# Build CGO_ENABLED=0: the USB transport (libusb via gousb) is build-tagged out
+# of fip-tool, and the signing path (sign / flash --dry-run) needs no USB. The
+# result links nothing and pulls no Go modules, so the build is hermetic +
+# offline. GOTOOLCHAIN=local pins to go-native (go.mod floor is 1.26.2).
 do_configure[noexec] = "1"
-do_compile[noexec] = "1"
+
+do_compile() {
+    export GOROOT="${STAGING_LIBDIR_NATIVE}/go"
+    export GOCACHE="${B}/.gocache"
+    export GOPATH="${B}/.gopath"
+    export GOPROXY="off"
+    export GOFLAGS="-mod=readonly"
+    export GOTOOLCHAIN="local"
+    export CGO_ENABLED="0"
+    cd ${S}/fip-tool
+    ${STAGING_BINDIR_NATIVE}/go build -trimpath -o ${B}/fip-tool .
+}
 
 FIPTOOLS_DIR = "${datadir}/superbird-fip-tools"
 
 do_install() {
-    install -d ${D}${FIPTOOLS_DIR}
-    cp -a ${S}/. ${D}${FIPTOOLS_DIR}/
-    # Drop VCS metadata (both repos) and any stale build outputs.
-    find ${D}${FIPTOOLS_DIR} -name .git -prune -exec rm -rf {} +
-    rm -rf ${D}${FIPTOOLS_DIR}/.gitignore ${D}${FIPTOOLS_DIR}/out
-    chmod +x ${D}${FIPTOOLS_DIR}/fip-rebuild.sh \
-             ${D}${FIPTOOLS_DIR}/flash_boot_partition.py \
-             ${D}${FIPTOOLS_DIR}/amlogic-boot-fip/build-fip.sh || true
-    chmod +x ${D}${FIPTOOLS_DIR}/amlogic-boot-fip/*/aml_encrypt_g12a || true
-}
+    install -d ${D}${bindir}
+    install -m 0755 ${B}/fip-tool ${D}${bindir}/fip-tool
 
-# The tree ships a prebuilt static x86-64 aml_encrypt_g12a; it carries debug
-# info and isn't stripped. It's a native build-host tool, never packaged into
-# the target, so silence the QA bits that don't apply to a vendored blob.
-INSANE_SKIP:${PN} += "already-stripped arch"
+    install -d ${D}${FIPTOOLS_DIR}/keys
+    install -m 0644 ${S}/keys/aml-user-key.sig ${D}${FIPTOOLS_DIR}/keys/aml-user-key.sig
+    install -m 0644 ${S}/stock.bootloader.bin ${D}${FIPTOOLS_DIR}/stock.bootloader.bin
+}

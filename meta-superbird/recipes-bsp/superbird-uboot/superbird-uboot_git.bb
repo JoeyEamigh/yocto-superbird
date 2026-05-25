@@ -30,30 +30,31 @@ UBOOT_MACHINE = "spotify_carthing_defconfig"
 COMPATIBLE_MACHINE = "^superbird$"
 
 # --- FIP sign + stock-BL2 pairing ---------------------------------------
-# Done in do_deploy:append using the native toolkit, after u-boot.inc has
+# Done in do_deploy:append using the native fip-tool, after u-boot.inc has
 # built + deployed the raw u-boot.bin (at ${B}/u-boot.bin, no UBOOT_CONFIG).
-DEPENDS += "superbird-fip-tools-native make-native"
+DEPENDS += "superbird-fip-tools-native"
 
 SUPERBIRD_BOOT_IMAGE ?= "superbird-boot.bin"
 
 do_deploy:append() {
-    # Run from a private copy of the toolkit: build-fip writes the key into
-    # the amlogic-boot-fip board dir, so the source must be writable.
-    rm -rf ${B}/fip-tools
-    cp -a ${STAGING_DATADIR_NATIVE}/superbird-fip-tools ${B}/fip-tools
-
-    # [1] BL33 -> g12a FIP signed with the public spotify production key.
-    cd ${B}/fip-tools
-    ./fip-rebuild.sh -b ${B}/u-boot.bin -o ${B}/fip-tools/out
+    # [1] BL33 -> g12a FIP, assembled + Spotify-signed entirely in pure Go
+    #     (fip-tool sign: embedded BL2/SCP/DDR prefix + TF-A 2.14 BL31 + our
+    #     u-boot as BL33, native signer). No aml_encrypt_g12a, no clone, no
+    #     shell. fip-tool is on PATH via superbird-fip-tools-native.
+    fip-tool sign \
+        -k ${STAGING_DATADIR_NATIVE}/superbird-fip-tools/keys/aml-user-key.sig \
+        -o ${B}/fip-out \
+        ${B}/u-boot.bin
 
     # [2] Stock BL2 (in-repo stock.bootloader.bin) + our signed FIP body
     #     -> cold-bootable 2 MiB boot0/boot1 image. --dry-run assembles the
     #     image to -o without touching any USB device.
-    ./flash_boot_partition.py ours \
-        --signed-fip ${B}/fip-tools/out/u-boot.bin.spotify.encrypt \
+    fip-tool flash ours \
+        --stock-bootloader ${STAGING_DATADIR_NATIVE}/superbird-fip-tools/stock.bootloader.bin \
+        --signed-fip ${B}/fip-out/u-boot.bin.spotify.encrypt \
         -o ${DEPLOYDIR}/${SUPERBIRD_BOOT_IMAGE} --dry-run
 
-    # Reference artifacts next to the flashable image.
-    install -m 0644 ${B}/fip-tools/out/u-boot.bin.spotify.encrypt \
+    # Reference artifact next to the flashable image.
+    install -m 0644 ${B}/fip-out/u-boot.bin.spotify.encrypt \
         ${DEPLOYDIR}/u-boot.bin.spotify.encrypt
 }
