@@ -778,7 +778,7 @@
  * 0xff6345cc is periphs-bus offset 0x1cc — an unclaimed gap between the
  * pinctrl gpio reg windows (0x40/0xe8/0x120/0x2c0/0x340), so this dedicated
  * 4-byte syscon doesn't overlap the pinctrl. Encoding: MAGIC 0x5242a100
- * ("RB") | REBOOT_REASON (bootloader=7, fastboot=4, recovery=2). mode-normal=0
+ * ("RB") | REBOOT_REASON (bootloader=7, fastboot=4, recovery=2, maskrom=0x4d). mode-normal=0
  * clears the magic on a plain reboot so the next boot is a normal A/B boot. */
 &periphs {
 	sticky_reboot: syscon@1cc {
@@ -792,6 +792,7 @@
 			mode-bootloader = <0x5242a107>;
 			mode-fastboot   = <0x5242a104>;
 			mode-recovery   = <0x5242a102>;
+			mode-maskrom    = <0x5242a14d>;
 			mode-normal     = <0x00000000>;
 		};
 	};
