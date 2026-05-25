@@ -1,0 +1,8 @@
+[Unit]
+Description=Reset the active A/B slot's u-boot try counter
+After=mnt-uboot\x2denv.mount
+ConditionPathExists=/mnt/uboot-env/uboot.env
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/superbird-slot-ok

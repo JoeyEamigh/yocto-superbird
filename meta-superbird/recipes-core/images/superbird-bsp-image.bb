@@ -3,7 +3,6 @@ DESCRIPTION = "Mainline kernel + busybox + openssh + USB-CDC-NCM gadget. No avah
 LICENSE = "MIT"
 
 inherit core-image
-inherit superbird-flashthing
 
 IMAGE_FEATURES += " \
     ssh-server-openssh \
@@ -25,16 +24,27 @@ IMAGE_INSTALL = " \
     e2fsprogs-mke2fs \
     e2fsprogs-e2fsck \
     e2fsprogs-tune2fs \
+    libubootenv-bin \
+    superbird-provision \
+    superbird-cpufreq-cap \
+    superbird-slot-ok \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static"
 
-SUPERBIRD_PART_TABLE = "system_a:0x10600000:0x2040b000,system_b:0x3120b000:0x2040b000,settings:0x52e16000:0x10000000,data:0x63616000:0x859ea000"
-SUPERBIRD_OTA_SYSTEM_A_OFFSET = "0x10600000"
-SUPERBIRD_OTA_SYSTEM_B_OFFSET = "0x3120b000"
-SUPERBIRD_FLASH_VIA_AML_PARTITIONS = "yes"
+# Emit a GPT disk image via wic (layout in superbird-mainline.wks) instead of
+# the stock flashthing zip. squashfs is also emitted standalone so root_a can
+# be flashed on its own during bring-up.
+IMAGE_FSTYPES = "wic squashfs"
+WKS_FILE = "superbird-mainline.wks"
 
-SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
-EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
+# Artifacts wic pulls from the deploy dir: kernel+DTB, the env FAT image, extlinux.conf.
+do_image_wic[depends] += " \
+    virtual/kernel:do_deploy \
+    superbird-uenv:do_deploy \
+    superbird-extlinux:do_deploy \
+"
 
-IMAGE_FSTYPES = "squashfs-lz4"
+# u-boot lives in boot0/boot1, not the wic GPT - so it's a sibling deploy
+# artifact, not a wic input. EXTRA_IMAGEDEPENDS builds + deploys superbird-boot.bin.
+EXTRA_IMAGEDEPENDS += "superbird-uboot"

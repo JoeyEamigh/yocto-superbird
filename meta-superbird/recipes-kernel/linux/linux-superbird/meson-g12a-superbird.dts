@@ -95,6 +95,33 @@
 		regulator-always-on;
 	};
 
+	dc_in: regulator-dc-in {
+		compatible = "regulator-fixed";
+		regulator-name = "DC_IN";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-always-on;
+	};
+
+	/* SY8120B1ABC PWM-controlled CPU regulator, driven on PWM_AO_D via
+	 * pwm_AO_cd channel 1. Same wiring as the sei510 reference board
+	 * and our u-boot DTS (lines 174-185). Range 721-1022 mV covers the
+	 * full G12A CPU OPP table (731-981 mV across 1.0-1.8 GHz). Hooking
+	 * this up is what makes cpufreq-dt actually scale voltage along
+	 * with frequency - without it the rail stays pinned at whatever
+	 * BL2 left it at and the higher OPPs are unsafe to step into. */
+	vddcpu: regulator-vddcpu {
+		compatible = "pwm-regulator";
+		regulator-name = "VDDCPU";
+		regulator-min-microvolt = <721000>;
+		regulator-max-microvolt = <1022000>;
+		pwm-supply = <&dc_in>;
+		pwms = <&pwm_AO_cd 1 1250 0>;
+		pwm-dutycycle-range = <100 0>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
 	/* 480x800 MIPI DSI panel backlight.
 	 * GPIOH_4 = enable (stock "bl_enable", active-high),
 	 * GPIOH_5 = PWM_F (stock "bl_pwm", brightness control). */
@@ -714,6 +741,69 @@
 		mux {
 			pins = "GPIOZ_3", "GPIOZ_4";
 			bias-disable;
+		};
+	};
+};
+
+/* CPU DVFS: bind each Cortex-A53 to the VDDCPU PWM regulator so cpufreq-dt
+ * can scale voltage along with frequency across the g12a OPP table. Enable
+ * the pwm_AO_cd controller with the PWM_AO_D pin mux so VDDCPU is actually
+ * driven. */
+&cpu0 { cpu-supply = <&vddcpu>; };
+&cpu1 { cpu-supply = <&vddcpu>; };
+&cpu2 { cpu-supply = <&vddcpu>; };
+&cpu3 { cpu-supply = <&vddcpu>; };
+
+&pwm_AO_cd {
+	pinctrl-0 = <&pwm_ao_d_e_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* Override clock-latency-ns on every CPU OPP to give the SY8120B1ABC
+ * pwm-regulator enough time to settle on each voltage step. The
+ * inherited meson-g12a.dtsi only sets 50 us on the lowest OPP; that
+ * is tight for the larger jumps (e.g. 861 -> 981 mV at the top of the
+ * table needs ~40 PWM cycles at 1250 ns each = 50 us just for duty
+ * change, plus the LC filter time). 200 us is safely above measured
+ * SY8120 transient response across all observed jump sizes. */
+&cpu_opp_table {
+	opp-1000000000 { clock-latency-ns = <200000>; };
+	opp-1200000000 { clock-latency-ns = <200000>; };
+	opp-1398000000 { clock-latency-ns = <200000>; };
+	opp-1512000000 { clock-latency-ns = <200000>; };
+	opp-1608000000 { clock-latency-ns = <200000>; };
+	opp-1704000000 { clock-latency-ns = <200000>; };
+	opp-1800000000 { clock-latency-ns = <200000>; };
+};
+
+/* `reboot bootloader` / fastboot soft-entry (mainline). syscon-reboot-mode
+ * stashes a magic reboot reason in PREG_STICKY_REG3 (0xff6345cc); u-boot's
+ * carthing_boot_route reads + one-shot-clears it on the next boot and enters
+ * fastboot — no buttons, no maskrom. The reg is a PERIPHS sticky scratch
+ * (survives a warm reset, cold-clears, freely CPU-writable, unlike
+ * AO_SEC_SD_CFG15 which hangs the bus on any AP write). Full writeup:
+ * docs/reboot-bootloader.md in the superbird-uboot repo.
+ *
+ * 0xff6345cc is periphs-bus offset 0x1cc — an unclaimed gap between the
+ * pinctrl gpio reg windows (0x40/0xe8/0x120/0x2c0/0x340), so this dedicated
+ * 4-byte syscon doesn't overlap the pinctrl. Encoding: MAGIC 0x5242a100
+ * ("RB") | REBOOT_REASON (bootloader=7, fastboot=4, recovery=2, maskrom=0x4d). mode-normal=0
+ * clears the magic on a plain reboot so the next boot is a normal A/B boot. */
+&periphs {
+	sticky_reboot: syscon@1cc {
+		compatible = "syscon", "simple-mfd";
+		reg = <0x0 0x1cc 0x0 0x4>;
+
+		reboot-mode {
+			compatible = "syscon-reboot-mode";
+			offset = <0x0>;
+			mask = <0xffffffff>;
+			mode-bootloader = <0x5242a107>;
+			mode-fastboot   = <0x5242a104>;
+			mode-recovery   = <0x5242a102>;
+			mode-maskrom    = <0x5242a14d>;
+			mode-normal     = <0x00000000>;
 		};
 	};
 };

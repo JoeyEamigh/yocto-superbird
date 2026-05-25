@@ -1,24 +1,8 @@
-# Bridgething A/B mount layout. Modeled on the Android-style scheme:
-#   /                  read-only system_a or system_b (kernel root=)
-#   /var               read-write data partition  (logs, cache, runtime state, swap)
-#   /var/lib           read-write settings partition (durable state, ssh keys, machine-id)
-#
-# system_a and system_b are squashfs (zstd-compressed). The kernel
-# auto-detects fstype from the superblock magic at mount-from-cmdline
-# time, but the fstab entries pin squashfs explicit so the rescue
-# userland-mount path doesn't guess. Both are listed `noauto` because
-# kernel cmdline root= already picks the live one; the fstab rows
-# exist so a rescue mount of the inactive slot is two `mount /dev/X`
-# keystrokes away.
-#
-# x-systemd.makefs on data + settings means first boot auto-formats
-# the partitions if they're blank, so we don't need the flash to
-# pre-populate them.
+# root is ro squashfs selected via root=PARTLABEL=root_X cmdline; no row needed for /.
+# data is carved by superbird-provision on first boot; makefs formats it first mount.
 
-/dev/system_a   /           squashfs ro,noauto                                   0 0
-/dev/system_b   /           squashfs ro,noauto                                   0 0
-/dev/data       /var        ext4     rw,noatime,nofail,x-systemd.makefs          0 2
-/dev/settings   /var/lib    ext4     rw,noatime,nofail,x-systemd.makefs          0 2
+PARTLABEL=data  /var            ext4  rw,noatime,nofail,x-systemd.makefs  0 2
+PARTLABEL=env   /mnt/uboot-env  vfat  rw,noatime,nofail                   0 2
 
 proc            /proc       proc    defaults                    0 0
 sysfs           /sys        sysfs   defaults                    0 0

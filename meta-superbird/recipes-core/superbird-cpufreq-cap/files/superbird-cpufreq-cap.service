@@ -1,0 +1,15 @@
+[Unit]
+Description=Cap CPU max frequency based on detected USB charger class
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/sys/devices/system/cpu/cpufreq
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/superbird-cpufreq-cap
+
+[Install]
+WantedBy=sysinit.target

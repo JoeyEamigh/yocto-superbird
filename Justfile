@@ -73,11 +73,10 @@ release *args:
 publish variant="prod":
   scripts/superbird-publish {{variant}}
 
-# pull latest dev image from ota manifest and flash it
+# Pull latest dev image from ota manifest and flash it.
 install-dev:
   scripts/superbird-install dev
 
-# pull latest prod image from ota manifest and flash it. For prod testing
 install-prod:
   scripts/superbird-install prod
 

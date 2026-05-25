@@ -1,0 +1,15 @@
+[Unit]
+Description=First-boot eMMC data-partition provisioning
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=local-fs-pre.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/dev/mmcblk0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/superbird-provision
+
+[Install]
+WantedBy=sysinit.target

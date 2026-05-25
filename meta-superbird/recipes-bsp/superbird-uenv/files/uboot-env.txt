@@ -1,0 +1,22 @@
+# u-boot env loaded from the env-partlabel vfat via CONFIG_ENV_IS_IN_FAT.
+
+stdin=serial
+stdout=serial
+stderr=serial
+
+fdt_addr_r=0x01000000
+kernel_addr_r=0x08080000
+scriptaddr=0x08000000
+pxefile_addr_r=0x01080000
+ramdisk_addr_r=0x13000000
+
+# booti decompresses Image.gz into this scratch buffer; must exceed the decompressed Image.
+kernel_comp_addr_r=0x0a000000
+kernel_comp_size=0x4000000
+
+slot=a
+slot_active=a
+slot_a_tries=3
+slot_b_tries=3
+
+bootcmd=ab_boot

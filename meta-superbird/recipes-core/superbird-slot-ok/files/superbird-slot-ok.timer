@@ -1,0 +1,9 @@
+[Unit]
+Description=Mark A/B slot healthy a short time after boot
+
+[Timer]
+OnBootSec=60s
+AccuracySec=2s
+
+[Install]
+WantedBy=timers.target
