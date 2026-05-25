@@ -14,7 +14,7 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=bfcc9fa683b26332011592972f78cafd"
 # pure Go from embedded board assets. destsuffix=${BP} lands it at the default
 # S (${UNPACKDIR}/${BP}), so we don't assign S.
 SRC_URI = "git://github.com/ThingLabsOSS/superbird-fip-tools.git;protocol=https;branch=main;destsuffix=${BP}"
-SRCREV = "a591304f7c5c8298059fd1200b8e4ca98c0620ac"
+SRCREV = "b1992a16cc9aa393920b701d1d39c3fedfb68d8d"
 
 # Build out-of-source: the default B==S would collide with the fip-tool/ source
 # subdir (go build -o ${B}/fip-tool vs the ${S}/fip-tool package dir).

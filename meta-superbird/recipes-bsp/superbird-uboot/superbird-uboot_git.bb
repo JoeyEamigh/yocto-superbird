@@ -18,7 +18,7 @@ require recipes-bsp/u-boot/u-boot.inc
 PV = "2026.07-rc2+git${SRCPV}"
 
 # ThingLabsOSS fork. Overrides the denx SRC_URI/SRCREV from u-boot-common.inc.
-SRCREV = "c645900efcf75779475e3b041a16e555bfdc0e87"
+SRCREV = "b71f1561197da87529ee7ada13d6c91e813b0f1d"
 SRC_URI = "git://github.com/ThingLabsOSS/superbird-uboot.git;protocol=https;branch=master"
 
 # Host build deps, matching oe-core's u-boot_2026.01 (same era as the fork).
