@@ -23,3 +23,18 @@ IMAGE_INSTALL:append = " \
     swupdate-config \
     superbird-ota \
 "
+
+# --- zchunk delta OTA testbed ---
+# Emit squashfs.zck + .zckheader alongside the plain squashfs. image_types_zchunk
+# adds the zck/zckheader CONVERSIONTYPES; Yocto walks squashfs -> .zck -> .zck.zckheader.
+# The delta .swu ships only the tiny .zckheader; the full .zck is fetched over HTTP.
+IMAGE_FSTYPES += "squashfs.zck squashfs.zck.zckheader"
+IMAGE_CLASSES += "image_types_zchunk"
+
+# A marker file the lean device images don't carry, so this rootfs differs from
+# whatever's already on the inactive slot - forces the delta handler to fetch the
+# changed chunk(s) over HTTP (exercises the download path, not just source reuse).
+ota_test_marker() {
+    echo "ota-delta-test" > ${IMAGE_ROOTFS}/etc/ota-test-marker
+}
+ROOTFS_POSTPROCESS_COMMAND += "ota_test_marker;"

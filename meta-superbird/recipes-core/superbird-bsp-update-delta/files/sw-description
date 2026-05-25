@@ -1,0 +1,70 @@
+# Superbird mainline BSP delta (zchunk) OTA - wic A/B layout.
+#
+# boot.vfat is shipped raw to boot_X. system.img comes as a zchunk delta: the .swu
+# carries only the tiny .zckheader (chunk index); the delta handler hashes the chunks
+# already on `source` (the currently-mounted slot's root partition), fetches just the
+# missing chunks over HTTP from `url`, reassembles the full squashfs, and chains to the
+# raw handler which writes root_X. bootenv flips slot_active + resets that slot's tries.
+#
+# Needs swupdate built with CONFIG_DELTA + CONFIG_DELTA_SOURCE_RAW + CONFIG_DOWNLOAD
+# (all in meta-bridgething's swupdate bbappend). source is the OTHER slot (the active
+# one we're booted from), which holds a near-identical image so most chunks are local.
+
+software =
+{
+    version = "@@VERSION@@";
+    description = "Superbird mainline BSP delta OTA";
+
+    hardware-compatibility: [ "1.0" ];
+
+    stable: {
+        slot_a: {
+            images: (
+                {
+                    filename = "boot.vfat";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/boot_a";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img.zck.zckheader";
+                    type = "delta";
+                    device = "/dev/disk/by-partlabel/root_a";
+                    properties: {
+                        url = "@@DELTA_URL@@";
+                        source = "/dev/disk/by-partlabel/root_b";
+                        chain = "raw";
+                    };
+                }
+            );
+            bootenv: (
+                { name = "slot_active";  value = "a"; },
+                { name = "slot_a_tries"; value = "3"; }
+            );
+        };
+        slot_b: {
+            images: (
+                {
+                    filename = "boot.vfat";
+                    type = "raw";
+                    device = "/dev/disk/by-partlabel/boot_b";
+                    installed-directly = true;
+                },
+                {
+                    filename = "system.img.zck.zckheader";
+                    type = "delta";
+                    device = "/dev/disk/by-partlabel/root_b";
+                    properties: {
+                        url = "@@DELTA_URL@@";
+                        source = "/dev/disk/by-partlabel/root_a";
+                        chain = "raw";
+                    };
+                }
+            );
+            bootenv: (
+                { name = "slot_active";  value = "b"; },
+                { name = "slot_b_tries"; value = "3"; }
+            );
+        };
+    };
+};
