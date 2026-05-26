@@ -1,4 +1,4 @@
-# /etc/ssh is ro; point HostKey at /var/lib/ssh on the settings partition
+# /etc/ssh is ro on squashfs; host keys live on the data mount under /var/lib/ssh
 do_install:append() {
     sed -i '/^#\?HostKey/d' ${D}${sysconfdir}/ssh/sshd_config
     cat >> ${D}${sysconfdir}/ssh/sshd_config <<EOF

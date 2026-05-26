@@ -12,6 +12,7 @@ PV = "${LINUX_VERSION}+git${SRCPV}"
 SRCREV = "a703eaaf8bd68c416d20f907435038f409ace6e4"
 SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;branch=linux-7.0.y;name=linux \
            file://superbird.cfg \
+           file://superbird-disable.cfg \
            file://meson-g12a-superbird.dts \
            file://0001-drm-panel-st7701-add-spotify-superbird-variant.patch \
            file://0002-Bluetooth-btbcm-add-BCM20703A2-UART-subver.patch \
@@ -46,10 +47,15 @@ do_configure() {
             ${S}/arch/arm64/boot/dts/amlogic/Makefile
     fi
 
-    # in-tree arm64 defconfig + our fragment
+    # in-tree arm64 defconfig + our additive fragment + our negation fragment.
+    # disable fragment trims arm64-defconfig drift (other-vendor SoCs, server bits,
+    # ChromeOS firmware) - kconfig drops every dependent symbol on olddefconfig.
     oe_runmake -C ${S} O=${B} defconfig
-    if [ -s ${UNPACKDIR}/superbird.cfg ]; then
-        ${S}/scripts/kconfig/merge_config.sh -m -O ${B} ${B}/.config ${UNPACKDIR}/superbird.cfg
+    fragments=""
+    [ -s ${UNPACKDIR}/superbird.cfg ] && fragments="$fragments ${UNPACKDIR}/superbird.cfg"
+    [ -s ${UNPACKDIR}/superbird-disable.cfg ] && fragments="$fragments ${UNPACKDIR}/superbird-disable.cfg"
+    if [ -n "$fragments" ]; then
+        ${S}/scripts/kconfig/merge_config.sh -m -O ${B} ${B}/.config $fragments
     fi
     oe_runmake -C ${S} O=${B} olddefconfig
 }

@@ -1,5 +1,5 @@
 SUMMARY = "fastfetch system info tool"
-DESCRIPTION = "Bridgething-branded fastfetch with a custom config + ASCII logo."
+DESCRIPTION = "ThingLabs-branded fastfetch with a custom config + ASCII logo."
 HOMEPAGE = "https://github.com/fastfetch-cli/fastfetch"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=2090e7d93df7ad5a3d41f6fb4226ac76"

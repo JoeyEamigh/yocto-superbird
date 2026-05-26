@@ -68,15 +68,6 @@ repos:
     commit: 48b1bf09b565f9927d7b52d48703028ba6c29526
     path: sources/meta-swupdate
 
-  meta-webkit:
-    url: https://github.com/Igalia/meta-webkit
-    branch: master
-    commit: 5345f701e2297079217a855301c11add4da82788
-    path: sources/meta-webkit
-    # master claims `scarthgap whinlatter` in LAYERSERIES_COMPAT.
-    # We add wrynose locally via meta-bridgething/conf/layer.conf
-    # until Igalia bumps it upstream.
-
   meta-browser:
     url: https://github.com/OSSystems/meta-browser
     branch: master

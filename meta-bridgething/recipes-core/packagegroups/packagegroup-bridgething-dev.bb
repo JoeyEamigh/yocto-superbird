@@ -17,7 +17,7 @@ RDEPENDS:${PN} = " \
     libdrm-tests \
     kmscube \
     glmark2 \
-    bridgething-gltest \
+    superbird-gltest \
     wayland-utils \
     \
     ydotool \

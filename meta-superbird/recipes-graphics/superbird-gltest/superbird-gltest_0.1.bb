@@ -9,12 +9,12 @@ S = "${UNPACKDIR}"
 DEPENDS = "virtual/egl virtual/libgles2"
 
 do_compile() {
-    ${CC} ${CFLAGS} ${LDFLAGS} -o bridgething-gltest gltest.c -lEGL -lGLESv2
+    ${CC} ${CFLAGS} ${LDFLAGS} -o superbird-gltest gltest.c -lEGL -lGLESv2
 }
 
 do_install() {
     install -d ${D}${bindir}
-    install -m 0755 bridgething-gltest ${D}${bindir}/
+    install -m 0755 superbird-gltest ${D}${bindir}/
 }
 
-FILES:${PN} = "${bindir}/bridgething-gltest"
+FILES:${PN} = "${bindir}/superbird-gltest"

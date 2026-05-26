@@ -1,212 +1,142 @@
 # yocto-superbird
 
-Mainline-Linux image stack for the Spotify Car Thing (Superbird, Amlogic
-S905D2). Ships a kernel (mainline v7.x + a small patch stack for the
-display panel, BT, touchscreen, and rotary encoder), mainline u-boot
-2026.07 with a signed FIP, and either the bridgething daemon + chromium
-kiosk or a bare BSP you can build on top of.
+A Yocto image stack for the Spotify Car Thing (Superbird, Amlogic
+S905D2). The BSP runs a mainline Linux kernel (v7.x with a small patch
+stack for the panel, BT, touchscreen, and rotary encoder) under mainline
+u-boot 2026.07 with a signed FIP. You can build the bare BSP, a
+chromium kiosk example, or the bridgething stack.
 
 ## Image variants
 
-| Image                           | What it is                                                                               | Use                                                 |
-| ------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `bridgething-prod-image`        | ext4 ro rootfs, chromium kiosk + cast_shell, weston kiosk-shell, bridgething daemon, OTA | what you flash on a car-thing you actually use      |
-| `bridgething-dev-image`         | squashfs-lz4 rootfs, weston desktop + VNC, dev tools, debug auth                         | iteration; bigger, slower, has the dev knife drawer |
-| `superbird-bsp-image`           | kernel + busybox + openssh + USB-CDC gadget, no graphics                                 | fork-template for non-bridgething userspace         |
-| `superbird-kiosk-example-image` | BSP + weston + chromium kiosk + a placeholder webapp                                     | fork-template for a non-bridgething kiosk           |
+| Image | What you get | Use for |
+| --- | --- | --- |
+| `superbird-bsp-image` | kernel, busybox, sshd, USB-CDC gadget | bring-up; starting point for your own userspace |
+| `superbird-kiosk-example-image` | BSP + weston + chromium kiosk + a placeholder webapp | fork-template for any chromium kiosk |
+| `bridgething-prod-image` | ext4 read-only rootfs, chromium kiosk, bridgething daemon, OTA | the bridgething project's own production build |
+| `bridgething-dev-image` | squashfs-lz4 rootfs with weston desktop, VNC, dev tools | bridgething iteration |
 
-All four ride the same GPT layout (env + boot_a + root_a + boot_b +
+All four share the same GPT layout (env + boot_a + root_a + boot_b +
 root_b + bandaid + data) and the same OTA pipeline.
 
-## Use the prebuilt image (no Yocto)
-
-For folks working on bridgething itself or just running the device: a
-rolling `latest` GitHub release carries the most recent dev + prod
-flashthing zips. Pull from that and skip the multi-hour Yocto build.
-
-One-time:
+## Build
 
 ```bash
-gh auth login                  # gh CLI, repo scope (release is private)
-cargo install flashthing-cli
-sudo flashthing-cli --setup    # Linux udev rule for libusb burn-mode access
+just build superbird          # BSP only
+just build example-kiosk      # BSP + chromium kiosk + placeholder webapp
+just build bridgething        # bridgething's full stack
 ```
 
-Then with the Car Thing in burn mode (hold the wheel-click button while
-plugging in USB):
+The first cold build downloads a lot. Subsequent builds reuse the local
+sstate-cache and ccache under `build/` and `ccache/`. There's also a
+public sstate mirror at `http://yocto.24hgr.love/sstate/` (read-only,
+configured in `kas/base.yml`) that primes most of the build for you.
 
 ```bash
-just install-dev               # or just install-prod
-just boot-kernel               # exit burn mode into the new image
+KAS_CONTAINER_ENGINE=podman just build superbird   # if you don't run docker
 ```
 
-The device comes up ~18s after `boot-kernel` at `bridgething.local`
-over USB-CDC-NCM (host needs a NetworkManager profile matched by MAC
-prefix `02:11:44:*` to reach the device's DHCP server). Multi-device
-hosts use `bridgething-<short-serial>.local` (per-device, auto-published
-by avahi).
+Output lands in `build/tmp/deploy/images/superbird/`. Each image
+produces a flashthing zip:
 
-## Iterate on a connected device
+- `superbird-bsp-image-superbird-flashthing.zip`
+- `superbird-kiosk-example-image-superbird-flashthing.zip`
+- `bridgething-{prod,dev}-image-superbird-flashthing.zip`
+
+## Flash
+
+Put the device into Amlogic mask-rom USB (`1b8e:c003`): hold the
+wheel-click button while plugging in USB. From a booted device,
+`just reboot-to-maskrom` does the same without unplugging.
 
 ```bash
-just ssh                                  # interactive shell
-just ssh 'uname -a'                       # one-shot
-just ssh 'systemctl status bridgething'   # service status
+just flash superbird-bsp-image
+just flash example-kiosk
+just flash bridgething-prod-image
+just boot-kernel              # exit mask-rom and cold-boot the new image
 ```
 
-Daemon hot-reload (atomic rotate on the bandaid bind-mount; survives
-reboot, clobbered by reflash):
+For an env-only change (touched `uboot.env` only, no kernel or rootfs
+rebuild) use the env-only zip:
 
 ```bash
-# from the bridgething repo:
-just push                                  # cross-build + push the new daemon
-# from this repo:
-just push-webapp ./dist <webapp-name>      # bundle into /var/bridgething/webapps/
+just flash-env superbird-bsp-image    # ~2s vs 30-60s for a full reflash
 ```
 
-Chromium DevTools over the USB link (chromium >= M111 ignores
-`--remote-debugging-address=<not-loopback>`, so we tunnel):
+## Talk to the device
+
+Over USB-CDC-NCM, the device shows up on mDNS as `<hostname>.local`.
+The BSP image defaults to `superbird.local`; bridgething's images
+default to `bridgething.local`. Multi-device hosts append a short
+serial suffix.
 
 ```bash
-just cdp                                   # then http://localhost:9223/json/version
+just ssh                      # interactive shell
+just ssh 'uname -a'           # one-shot
 ```
 
-UART for pre-SSH or kernel-panic diagnostics:
+UART for pre-SSH boots or kernel panics:
 
 ```bash
-just console start                         # long-lived agent on /dev/ttyUSB0
+just console start            # long-lived agent on /dev/ttyUSB0
 just cmd 'dmesg | tail -30'
 just console stop
 ```
 
-The console agent holds FT232 RTS deasserted (RTS is wired to the SoC
-reset pin), so the board doesn't reset every time another process opens
-the serial node. Don't open `/dev/ttyUSB0` directly while the agent is
-running; it owns the port via a FIFO.
+The agent keeps FT232 RTS deasserted (it's wired to the SoC reset pin),
+so the board doesn't reset every time another process opens the serial
+node. Don't open `/dev/ttyUSB0` directly while the agent is running.
+
+Other knobs:
 
 ```bash
-just reset-pulse 200                       # one-shot soft reset (200ms RTS LOW)
-just boot-kernel                           # exit mask-rom + cold-boot the on-disk image
-just reboot-to-maskrom                     # drop into 1b8e:c003 for a full wic flash
-just reboot-to-fastboot                    # drop into u-boot fastboot for env / partition writes
+just reset-pulse 200          # 200ms RTS LOW, soft reset
+just reboot-to-maskrom        # drop into 1b8e:c003 for a full wic flash
+just reboot-to-fastboot       # drop into u-boot fastboot
 ```
 
 ## OTA
 
-The bridgething daemon owns the apply path end-to-end. The companion app
-pushes a `.swu` over the BT gateway; the daemon writes it via libswupdate
-to the inactive slot, flips `slot_active`, and reboots. Three kinds:
+OTAs are A/B with libswupdate. A successful install writes the inactive
+slot, flips `slot_active` in u-boot env, and reboots; if the new slot
+fails to come up three times the bootloader rolls back. The companion
+app drives the `.swu` push; the on-device `bridgething-ab` binary is a
+debug helper (`status`, `set-slot a|b`) and does not drive installs
+itself.
 
-- `image`: `.swu` to root_X via libswupdate, slot flip, reboot
-- `daemon`: aarch64 binary atomic-rotated on the bandaid bind-mount, service restart
-- `builtin-webapp`: hub/stock zip swapped on the bandaid bind-mount, service restart
+Three install kinds:
 
-The on-device `bridgething-ab` binary is a debug helper
-(`status`, `set-slot a|b`); it does not drive installs.
+- `image`: writes a full `.swu` to root_X via libswupdate
+- `daemon`: aarch64 binary rotated atomically on the bandaid bind-mount, service restart
+- `builtin-webapp`: hub or stock webapp zip swapped on the bandaid bind-mount, service restart
 
-For delta OTAs (zchunk; only ships the changed chunks), the inactive
-slot is updated incrementally over USB-CDC HTTP range requests. See
-`meta-superbird/recipes-support/swupdate/` for the delta-handler
-integration.
-
-## Build from source
-
-```bash
-just build                  # default: bridgething (kas/bridgething.yml)
-just build bridgething      # the same
-just build superbird        # BSP-only, no bridgething
-just build example-kiosk    # BSP + chromium kiosk + placeholder webapp
-just build bridgething-local  # bridgething from an unpushed local checkout
-```
-
-Cold builds pull heavily from `http://yocto.24hgr.love/` (configured in
-`kas/base.yml`), so first build is mostly download-bound. Subsequent
-builds reuse the local sstate + ccache.
-
-```bash
-KAS_CONTAINER_ENGINE=podman just build    # if you don't want docker
-```
-
-Output: `build/tmp/deploy/images/superbird/`. Each image produces a
-flashthing zip:
-
-- `bridgething-prod-image-superbird-flashthing.zip`
-- `bridgething-dev-image-superbird-flashthing.zip`
-- `superbird-bsp-image-superbird-flashthing.zip`
-- `superbird-kiosk-example-image-superbird-flashthing.zip`
-
-## Flash from local build
-
-Drop the device into amlogic mask-rom usb (`1b8e:c003`): hold the wheel-click
-while plugging in USB for a cold first flash, or `just reboot-to-maskrom`
-from a booted device. The kernel writes the maskrom magic to
-`PREG_STICKY_REG3` (`syscon-reboot-mode` in the board DTS) and u-boot's
-`carthing_boot_route` catches it on the next boot.
-
-```bash
-just flash bridgething-prod-image
-just flash bridgething-dev-image
-just flash superbird-bsp-image
-```
-
-`just boot-kernel` resets the ram-staged mask-rom u-boot so the device
-cold-boots the freshly written on-disk image.
-
-If only `uboot.env` changed (no rootfs / kernel rebuild), use the
-env-only zip:
-
-```bash
-just flash-env bridgething-prod-image      # ~2s vs 30-60s for a full reflash
-```
-
-## Build prerequisites
-
-| Tool                                                        | Why                                 |
-| ----------------------------------------------------------- | ----------------------------------- |
-| `docker` (or `podman`)                                      | runs the kas container              |
-| [`kas`](https://kas.readthedocs.io/)                        | invoked via `kas-container` wrapper |
-| [`just`](https://github.com/casey/just)                     | drives the Justfile recipes         |
-| [`flashthing-cli`](https://crates.io/crates/flashthing-cli) | host-side burn-mode flasher         |
-
-For device interaction:
-
-| Tool                  | Why                                                                               |
-| --------------------- | --------------------------------------------------------------------------------- |
-| `uv`                  | runs the PEP-723 Python helpers in `scripts/`                                     |
-| `nmcli`               | sets up the USB-CDC-NCM profile so the device is reachable at `bridgething.local` |
-| `avahi-daemon`        | mDNS resolves `bridgething.local`; the raw IP varies per serial                   |
-| `ssh`, `rsync`, `scp` | device-side helpers shell out to these                                            |
-
-Linux: user needs `dialout` (Ubuntu/Debian) or `uucp` (Arch) group for
-`/dev/ttyUSB*` (FT232 UART).
+Delta OTAs (zchunk) ship only the changed chunks and apply via
+HTTP range requests over the USB link. The handler integration lives
+in `meta-superbird/recipes-support/swupdate/`.
 
 ## Layer layout
 
-- `meta-superbird/` — BSP: kernel + DTS + patches, mainline u-boot 2026.07 + signed FIP, distro `superbird`, partition + perf + identity knobs, baseline systemd units, USB gadget, bluetooth. See `meta-superbird/README.md`.
-- `meta-bridgething/` — Application: bridgething daemon, hub + stock webapps, OTA wrappers, prod/dev image recipes, distro `bridgething` (inherits `superbird`). See `meta-bridgething/README.md`.
-- `examples/meta-superbird-kiosk-example/` — Fork-template for non-bridgething kiosks.
+- `meta-superbird/` is the BSP: kernel, DTS, mainline u-boot, partition geometry, baseline systemd units, USB gadget, bluetooth. See `meta-superbird/README.md`.
+- `meta-bridgething/` is the bridgething application layer: the daemon, hub and stock webapps, OTA wrappers, prod/dev image recipes. See `meta-bridgething/README.md`.
+- `examples/meta-superbird-kiosk-example/` is the fork-template for a non-bridgething kiosk.
 
-## Scripts
+## Host tools
 
-`scripts/` holds the Python and Bash helpers `just` invokes. They run
-from the repo path (no install) and work standalone too:
+| Tool | Why |
+| --- | --- |
+| `docker` or `podman` | runs the kas container |
+| [`kas`](https://kas.readthedocs.io/) | invoked through `kas-container` |
+| [`just`](https://github.com/casey/just) | drives the recipes in the `Justfile` |
+| [`flashthing-cli`](https://crates.io/crates/flashthing-cli) | host-side burn-mode flasher |
 
-```bash
-scripts/superbird-ssh 'uname -a'
-scripts/superbird-console.sh start
-SUPERBIRD_HOST=bridgething.local scripts/bridgething-cdp 9222
-```
+For device interaction you'll also want `ssh`, `avahi-daemon` (mDNS),
+and on Linux your user in the `dialout` (Debian/Ubuntu) or `uucp` (Arch)
+group so you can open `/dev/ttyUSB*`.
 
-Environment overrides:
-
-| Env var                | Default                                | Purpose                            |
-| ---------------------- | -------------------------------------- | ---------------------------------- |
-| `KAS_CONTAINER_ENGINE` | `docker`                               | container engine for kas-container |
-| `FLASHTHING_CLI`       | `flashthing-cli` (PATH)                | host-side burn-mode flasher        |
-| `SUPERBIRD_HOST`       | `bridgething.local`                    | device address (mDNS)              |
-| `SUPERBIRD_UART_DEV`   | first FT232 by-id, then `/dev/ttyUSB0` | UART serial node                   |
-| `SUPERBIRD_RESET_HOLD` | `scripts/superbird-reset-hold.py`      | RTS reset helper                   |
+The Python helpers under `scripts/` use PEP-723 inline metadata. If you
+have `uv` installed they Just Work; otherwise read the shebang for the
+required interpreter and packages.
 
 ## License
 
-MIT. Upstream layers: meta-meson is GPL-2.0, openembedded-core / meta-yocto / poky are MIT.
+MIT. Upstream layers: meta-meson is GPL-2.0; openembedded-core,
+meta-yocto, and poky are MIT.

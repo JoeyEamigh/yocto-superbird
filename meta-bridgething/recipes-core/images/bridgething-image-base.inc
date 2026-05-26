@@ -15,12 +15,6 @@ IMAGE_INSTALL = " \
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static weston-init"
 
-# kept out of vmlinuz to fit boot.img under the 16 MiB cap.
-IMAGE_INSTALL += " \
-    kernel-module-meson-vdec \
-    kernel-module-ge2d \
-"
-
 SUPERBIRD_ROOTFS_TYPE ??= "ext4"
 EXTRA_IMAGECMD:squashfs-lz4 = "-b 1M -no-xattrs -all-root -Xhc"
 EXTRA_IMAGECMD:ext4 = "-i 16384 -m 0 -O ^has_journal -O ^huge_file"

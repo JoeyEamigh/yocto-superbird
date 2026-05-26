@@ -6,6 +6,7 @@ Requires=opt-overlay@bridgething.service
 Conflicts=superbird-als.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
+OnFailure=bridgething-rollback.service
 
 [Service]
 Type=notify
@@ -19,7 +20,6 @@ WatchdogSec=0
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=15
-OnFailure=bridgething-rollback.service
 
 [Install]
 WantedBy=multi-user.target
