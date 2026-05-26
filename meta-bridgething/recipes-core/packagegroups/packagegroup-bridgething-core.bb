@@ -1,5 +1,4 @@
 SUMMARY = "Bridgething core runtime"
-DESCRIPTION = "Everything required to boot to a usable bridgething stack. Shared by dev and prod images."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -10,15 +9,15 @@ PACKAGES = "${PN}"
 RDEPENDS:${PN} = " \
     \
     bridgething-daemon \
-    bridgething-opt-overlay \
+    opt-overlay \
     bridgething-init \
-    bridgething-clock \
-    bridgething-timezone \
-    bridgething-usb-gadget \
-    bridgething-mdns \
-    bridgething-als \
-    bridgething-cursor-suppress \
-    bridgething-fbpaint \
+    superbird-clock \
+    superbird-timezone \
+    superbird-usb-gadget \
+    superbird-mdns \
+    superbird-als \
+    cursor-suppress \
+    superbird-fbpaint \
     bridgething-stock-webapp \
     bridgething-hub-webapp \
     superbird-base-files \
@@ -30,7 +29,7 @@ RDEPENDS:${PN} = " \
     blank-cursor \
     \
     chromium-ozone-wayland \
-    bridgething-chromium-kiosk \
+    chromium-kiosk \
     \
     swupdate \
     swupdate-config \

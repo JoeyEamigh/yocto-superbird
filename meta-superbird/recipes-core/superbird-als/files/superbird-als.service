@@ -1,0 +1,15 @@
+[Unit]
+Description=Bridgething ALS
+After=multi-user.target
+ConditionPathExists=/sys/class/backlight/backlight/brightness
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/superbird-als.conf
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do [ -e /sys/bus/iio/devices/iio:device0/in_intensity0_raw ] && exit 0; sleep 0.5; done; exit 1'
+ExecStart=/usr/bin/superbird-als
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -9,12 +9,14 @@ SWUPDATE_SIGNING ??= ""
 
 inherit swupdate
 
+# so cross-layer wrappers find sw-description in this dir.
+FILESEXTRAPATHS:prepend := "${@os.path.dirname(bb.utils.which(d.getVar('BBPATH'), 'recipes-core/superbird-bsp-update/superbird-bsp-update.inc'))}/files:"
+
 SRC_URI = "file://sw-description"
 
 SUPERBIRD_OTA_SOURCE_IMAGE ??= "superbird-elle-image"
 SUPERBIRD_OTA_SOURCE_LINKNAME = "${SUPERBIRD_OTA_SOURCE_IMAGE}-${MACHINE}"
 
-# wrappers set artifact + cpio name (squashfs as system.img or zckheader as system.img.zck.zckheader).
 SUPERBIRD_OTA_SYSTEM_ARTIFACT ??= ""
 SUPERBIRD_OTA_SYSTEM_CPIO_NAME ??= ""
 
@@ -27,8 +29,7 @@ python __anonymous() {
 SWU_STAGEDIR = "${PN}-stage"
 SWUPDATE_IMAGES = "${SWU_STAGEDIR}/boot.vfat ${SWU_STAGEDIR}/${SUPERBIRD_OTA_SYSTEM_CPIO_NAME}"
 
-# default targets the CDC-ECM host IP on the gadget subnet; override per test.
-SUPERBIRD_DELTA_URL ?= "http://10.42.0.6:8893/system.img.zck"
+SUPERBIRD_OTA_DELTA_URL_BASE ?= "http://127.0.0.1:8893"
 
 SWU_VERSION = "${DISTRO_VERSION}+${DATETIME}"
 SWU_VERSION[vardepsexclude] = "DATETIME"
@@ -50,7 +51,7 @@ addtask stage_swu_inputs after do_unpack before do_swuimage
 do_render_sw_description() {
     sed -i \
         -e "s|@@VERSION@@|${SWU_VERSION}|g" \
-        -e "s|@@DELTA_URL@@|${SUPERBIRD_DELTA_URL}|g" \
+        -e "s|@@DELTA_URL_BASE@@|${SUPERBIRD_OTA_DELTA_URL_BASE}|g" \
         ${UNPACKDIR}/sw-description
 }
 addtask render_sw_description after do_unpack before do_swuimage

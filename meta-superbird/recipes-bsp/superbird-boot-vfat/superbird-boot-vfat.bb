@@ -8,8 +8,7 @@ inherit deploy nopackages
 
 DEPENDS = "dosfstools-native mtools-native"
 
-# must equal the boot_X --fixed-size in superbird-mainline.wks.
-BOOT_IMG_KIB ?= "32768"
+BOOT_IMG_KIB = "${@int(d.getVar('SUPERBIRD_BOOT_PART_SIZE')) * 1024}"
 
 do_compile[depends] += " \
     virtual/kernel:do_deploy \
@@ -21,7 +20,7 @@ do_compile() {
     dd if=/dev/zero of=${B}/boot.vfat bs=1024 count=${BOOT_IMG_KIB}
     mkfs.vfat -n BOOT ${B}/boot.vfat
     mmd -i ${B}/boot.vfat ::extlinux
-    mcopy -i ${B}/boot.vfat ${DEPLOY_DIR_IMAGE}/Image.gz ::extlinux/Image.gz
+    mcopy -i ${B}/boot.vfat ${DEPLOY_DIR_IMAGE}/Image ::extlinux/Image
     mcopy -i ${B}/boot.vfat ${DEPLOY_DIR_IMAGE}/meson-g12a-superbird.dtb ::extlinux/meson-g12a-superbird.dtb
     mcopy -i ${B}/boot.vfat ${DEPLOY_DIR_IMAGE}/extlinux.conf ::extlinux/extlinux.conf
 }

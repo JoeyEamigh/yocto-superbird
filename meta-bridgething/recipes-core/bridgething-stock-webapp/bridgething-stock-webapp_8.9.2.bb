@@ -1,5 +1,4 @@
-SUMMARY = "Stock Spotify webapp as a built-in bridgething webapp"
-DESCRIPTION = "Builds the thinglabs stock webapp with bun and stages it at /usr/share/bridgething/webapps/stock/."
+SUMMARY = "Stock Spotify webapp for bridgething"
 HOMEPAGE = "https://github.com/thinglabsoss/superbird-webapp"
 LICENSE = "CLOSED"
 
@@ -11,9 +10,8 @@ DEPENDS = "bun-native"
 
 inherit allarch
 
-WEBAPP_DIR = "${datadir}/bridgething/webapps/stock"
+WEBAPP_DIR = "${nonarch_libdir}/bridgething/webapps/stock"
 
-# bun install hits the npm registry
 do_compile[network] = "1"
 BUN_HOME = "${WORKDIR}/bun-home"
 
@@ -37,4 +35,4 @@ do_install() {
     find ${D}${WEBAPP_DIR} -type f -exec chmod 0644 {} \;
 }
 
-FILES:${PN} = "${datadir}/bridgething/webapps/stock"
+FILES:${PN} = "${WEBAPP_DIR}"

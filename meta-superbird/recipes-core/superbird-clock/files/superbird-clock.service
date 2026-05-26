@@ -1,0 +1,16 @@
+[Unit]
+Description=Bridgething monotonic-forward clock guard
+DefaultDependencies=no
+Before=sysinit.target time-set.target shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/var/lib
+ConditionPathIsReadWrite=/var/lib
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/superbird-clock --restore
+ExecStop=/usr/bin/superbird-clock --save
+
+[Install]
+WantedBy=sysinit.target

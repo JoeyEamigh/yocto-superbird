@@ -5,8 +5,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = " \
     file://zram.conf \
-    file://61-bridgething-rotary.rules \
-    file://50-bridgething-rotary.quirks \
+    file://61-superbird-rotary.rules \
+    file://50-superbird-rotary.quirks \
     file://fw_env.config \
     file://hwrevision \
     file://superbird-cache.conf \
@@ -19,11 +19,11 @@ do_install() {
     install -m 0644 ${S}/zram.conf ${D}${sysconfdir}/sysctl.d/30-zram.conf
 
     install -d ${D}${sysconfdir}/udev/rules.d
-    install -m 0644 ${S}/61-bridgething-rotary.rules \
-        ${D}${sysconfdir}/udev/rules.d/61-bridgething-rotary.rules
+    install -m 0644 ${S}/61-superbird-rotary.rules \
+        ${D}${sysconfdir}/udev/rules.d/61-superbird-rotary.rules
 
     install -d ${D}${sysconfdir}/libinput
-    install -m 0644 ${S}/50-bridgething-rotary.quirks \
+    install -m 0644 ${S}/50-superbird-rotary.quirks \
         ${D}${sysconfdir}/libinput/local-overrides.quirks
 
     install -m 0644 ${S}/fw_env.config ${D}${sysconfdir}/fw_env.config
@@ -44,7 +44,7 @@ do_install() {
 
 FILES:${PN} = " \
     ${sysconfdir}/sysctl.d/30-zram.conf \
-    ${sysconfdir}/udev/rules.d/61-bridgething-rotary.rules \
+    ${sysconfdir}/udev/rules.d/61-superbird-rotary.rules \
     ${sysconfdir}/libinput/local-overrides.quirks \
     ${sysconfdir}/fw_env.config \
     ${sysconfdir}/hwrevision \

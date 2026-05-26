@@ -9,7 +9,7 @@ PACKAGES = "${PN}"
 
 RDEPENDS:${PN} = " \
     \
-    bridgething-weston-init-desktop \
+    superbird-weston-init-desktop \
     bridgething-daemon-dev-config \
     \
     weston-examples \

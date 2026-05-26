@@ -24,7 +24,7 @@ software =
                     type = "delta";
                     device = "/dev/disk/by-partlabel/root_a";
                     properties: {
-                        url = "@@DELTA_URL@@";
+                        url = "@@DELTA_URL_BASE@@/system.img.zck";
                         source = "/dev/disk/by-partlabel/root_b";
                         chain = "raw";
                     };
@@ -48,7 +48,7 @@ software =
                     type = "delta";
                     device = "/dev/disk/by-partlabel/root_b";
                     properties: {
-                        url = "@@DELTA_URL@@";
+                        url = "@@DELTA_URL_BASE@@/system.img.zck";
                         source = "/dev/disk/by-partlabel/root_a";
                         chain = "raw";
                     };

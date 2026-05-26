@@ -1,0 +1,12 @@
+# Allowed (software-set, running-mode) pairs that IPC clients may
+# request via swupdate_request.{software_set,running_mode}. Without
+# at least one --accepted-select flag swupdate's `is_selection_allowed`
+# rejects every non-default selection, and superbird sw-descriptions are
+# is selector-only (`stable.slot_a` / `stable.slot_b`), so a default
+# (empty selector) install finds no images.
+#
+# We append to SWUPDATE_ARGS rather than SWUPDATE_EXTRA_ARGS because
+# upstream swupdate.sh expands `SWUPDATE_ARGS="-v ${SWUPDATE_EXTRA_ARGS}"`
+# at the top, before sourcing this conf.d - the comment in swupdate.sh
+# explicitly directs overrides at SWUPDATE_ARGS.
+SWUPDATE_ARGS="$SWUPDATE_ARGS --accepted-select stable,slot_a --accepted-select stable,slot_b"

@@ -1,7 +1,0 @@
-[Unit]
-Description=Bridgething clock tick
-RequiresMountsFor=/var/lib
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/bridgething-clock --save

@@ -1,8 +1,9 @@
 # root is ro squashfs selected via root=PARTLABEL=root_X cmdline; no row needed for /.
 # data is carved by superbird-provision on first boot; makefs formats it first mount.
 
-PARTLABEL=data  /var            ext4  rw,noatime,nofail,x-systemd.makefs  0 2
-PARTLABEL=env   /mnt/uboot-env  vfat  rw,noatime,nofail                   0 2
+PARTLABEL=data     /var            ext4  rw,noatime,nofail,x-systemd.makefs  0 2
+PARTLABEL=bandaid  /var/lib/bandaid ext4 rw,noatime,nofail,x-systemd.makefs  0 2
+PARTLABEL=env      /mnt/uboot-env  vfat  rw,noatime,nofail                   0 2
 
 proc            /proc       proc    defaults                    0 0
 sysfs           /sys        sysfs   defaults                    0 0

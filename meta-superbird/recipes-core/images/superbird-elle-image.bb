@@ -3,8 +3,8 @@ require superbird-bsp-image.bb
 SUMMARY = "BSP image + weston + alsa-utils + A/B OTA testbed"
 
 IMAGE_INSTALL:append = " \
-    bridgething-weston-init-desktop \
-    bridgething-cursor-suppress \
+    superbird-weston-init-desktop \
+    cursor-suppress \
     weston-vnc-backend \
     weston-examples \
     alsa-utils \

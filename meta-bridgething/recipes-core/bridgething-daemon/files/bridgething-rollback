@@ -1,41 +1,33 @@
 #!/bin/sh
-# Bridgething rollback: react to a daemon that won't stay up.
-#
-# Triggered by bridgething.service's OnFailure= when StartLimitBurst is
-# hit (3 failures in 60s). Rotates the broken binary aside, promotes the
-# previous binary if available, and restarts the daemon. If there's no
-# previous binary, removes .current entirely so the launcher falls
-# through to the squashfs fallback at /usr/libexec/bridgething - the
-# device stays usable, just on the older daemon shipped with the image.
-#
-# Crucially, this script must NOT itself escalate into another rollback.
-# It does its work and exits; the unit is Type=oneshot with no OnFailure
-# of its own. The reset-failed + start sequence at the end gives the
-# daemon a fresh restart-counter window.
+# rotate bandaid daemon; if no previous, wipe bandaid and reboot to factory.
 set -eu
 
-DAEMON_DIR=/opt/bridgething/daemon
-CURRENT="${DAEMON_DIR}/bridgething.current"
-PREVIOUS="${DAEMON_DIR}/bridgething.previous"
+BANDAID_VENDOR=/var/lib/bandaid/bridgething
+DAEMON_DIR=${BANDAID_VENDOR}/daemon
+CURRENT=${DAEMON_DIR}/bridgething.current
+PREVIOUS=${DAEMON_DIR}/bridgething.previous
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-BROKEN="${DAEMON_DIR}/bridgething.broken.${TIMESTAMP}"
+BROKEN=${DAEMON_DIR}/bridgething.broken.${TIMESTAMP}
 
-if [ ! -e "$CURRENT" ]; then
-    echo "bridgething-rollback: ${CURRENT} missing; nothing to rotate"
-elif [ -e "$PREVIOUS" ]; then
-    mv "$CURRENT" "$BROKEN"
-    mv "$PREVIOUS" "$CURRENT"
-    echo "bridgething-rollback: promoted previous -> current; broken kept at ${BROKEN}"
-else
-    mv "$CURRENT" "$BROKEN"
-    echo "bridgething-rollback: no previous to promote; falling through to squashfs fallback"
+if [ ! -d "$BANDAID_VENDOR" ]; then
+    exit 0
 fi
 
-# Trim broken backups: keep last 3 to bound disk usage on the settings
-# partition (256 MB total, daemon ~17 MB each).
-ls -1t "${DAEMON_DIR}"/bridgething.broken.* 2>/dev/null \
-    | tail -n +4 \
-    | xargs -r rm -f
+if [ -e "$PREVIOUS" ]; then
+    if [ -e "$CURRENT" ]; then
+        mv "$CURRENT" "$BROKEN"
+    fi
+    mv "$PREVIOUS" "$CURRENT"
 
-systemctl reset-failed bridgething.service
-systemctl start bridgething.service
+    ls -1t "${DAEMON_DIR}"/bridgething.broken.* 2>/dev/null \
+        | tail -n +4 \
+        | xargs -r rm -f
+
+    systemctl reset-failed bridgething.service
+    systemctl start bridgething.service
+    exit 0
+fi
+
+rm -rf "${BANDAID_VENDOR}"
+sync
+systemctl reboot

@@ -1,8 +1,7 @@
 [Unit]
 Description=Bridgething daemon rollback after restart-burst failure
-After=bridgething-opt-overlay.service
-Requires=bridgething-opt-overlay.service
-ConditionPathIsMountPoint=/opt/bridgething
+After=opt-overlay@bridgething.service var-lib-bandaid.mount
+Requires=var-lib-bandaid.mount
 
 [Service]
 Type=oneshot

@@ -184,7 +184,7 @@ wait_for_hci0() {
 # iPhone rejects identification if it doesn't match the address it
 # bonded against. Without this step the BCM chip boots with a default
 # / random address chosen by the patchram, which never matches the
-# /etc/superbird btMac field that bridgething-init seeds from the same
+# /etc/superbird btMac field that the device init recipe seeds from the same
 # nvmem cell.
 program_efuse_bdaddr() {
     local cell mac_be hex_le

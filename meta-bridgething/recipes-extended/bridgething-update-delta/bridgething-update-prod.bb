@@ -1,8 +1,7 @@
-SUMMARY = "Bridgething prod-image delta OTA"
+SUMMARY = "Bridgething prod-image delta OTA (.swu)"
 
-require ${THISDIR}/bridgething-update-delta.inc
+require recipes-core/superbird-bsp-update/superbird-bsp-update.inc
 
-BRIDGETHING_OTA_SOURCE_IMAGE = "bridgething-prod-image"
-
-# match prod's rootfs type so the zck header artifact resolves
-SUPERBIRD_ROOTFS_TYPE = "ext4"
+SUPERBIRD_OTA_SOURCE_IMAGE = "bridgething-prod-image"
+SUPERBIRD_OTA_SYSTEM_ARTIFACT  = "${SUPERBIRD_OTA_SOURCE_LINKNAME}.ext4.zck.zckheader"
+SUPERBIRD_OTA_SYSTEM_CPIO_NAME = "system.img.zck.zckheader"

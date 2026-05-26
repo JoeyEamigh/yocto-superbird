@@ -1,0 +1,21 @@
+#!/bin/sh
+# bind /opt/<vendor> to bandaid if mounted, else to the rootfs floor.
+set -eu
+
+VENDOR=${1:?vendor name required}
+BANDAID=/var/lib/bandaid/${VENDOR}
+FACTORY=/usr/lib/${VENDOR}
+TARGET=/opt/${VENDOR}
+
+if mountpoint -q /var/lib/bandaid && [ -d "$BANDAID" ]; then
+    SRC=$BANDAID
+else
+    SRC=$FACTORY
+fi
+
+if [ ! -d "$SRC" ]; then
+    echo "opt-overlay: no source for ${VENDOR}" >&2
+    exit 1
+fi
+
+mount --bind "$SRC" "$TARGET"

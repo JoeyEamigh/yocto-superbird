@@ -1,5 +1,4 @@
-SUMMARY = "Bridgething hub launcher webapp as a built-in"
-DESCRIPTION = "Builds packages/hub-webapp with bun and stages it at /usr/share/bridgething/webapps/hub/."
+SUMMARY = "Bridgething hub launcher webapp"
 HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
@@ -11,9 +10,8 @@ DEPENDS = "bun-native"
 
 inherit allarch
 
-WEBAPP_DIR = "${datadir}/bridgething/webapps/hub"
+WEBAPP_DIR = "${nonarch_libdir}/bridgething/webapps/hub"
 
-# bun install hits the npm registry
 do_compile[network] = "1"
 BUN_HOME = "${WORKDIR}/bun-home"
 
@@ -23,7 +21,7 @@ do_compile() {
     install -d ${BUN_HOME}
     export HOME=${BUN_HOME}
 
-    # install at the monorepo root so workspace:* resolves, then build hub-webapp only
+    # install at the monorepo root so workspace:* resolves, then build hub only.
     bun install --frozen-lockfile --no-progress
     bun run build --filter=@bridgething/hub-webapp
 }
@@ -36,4 +34,4 @@ do_install() {
     find ${D}${WEBAPP_DIR} -type f -exec chmod 0644 {} \;
 }
 
-FILES:${PN} = "${datadir}/bridgething/webapps/hub"
+FILES:${PN} = "${WEBAPP_DIR}"

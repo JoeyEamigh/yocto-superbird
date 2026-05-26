@@ -1,5 +1,7 @@
-SUMMARY = "Bridgething dev-image delta OTA"
+SUMMARY = "Bridgething dev-image delta OTA (.swu)"
 
-require ${THISDIR}/bridgething-update-delta.inc
+require recipes-core/superbird-bsp-update/superbird-bsp-update.inc
 
-BRIDGETHING_OTA_SOURCE_IMAGE = "bridgething-dev-image"
+SUPERBIRD_OTA_SOURCE_IMAGE = "bridgething-dev-image"
+SUPERBIRD_OTA_SYSTEM_ARTIFACT  = "${SUPERBIRD_OTA_SOURCE_LINKNAME}.squashfs-lz4.zck.zckheader"
+SUPERBIRD_OTA_SYSTEM_CPIO_NAME = "system.img.zck.zckheader"

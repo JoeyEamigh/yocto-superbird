@@ -11,8 +11,7 @@ DEPENDS = "u-boot-tools-native dosfstools-native mtools-native"
 inherit deploy nopackages
 
 UBOOT_ENV_SIZE ?= "0x10000"
-# must equal the env --fixed-size in superbird-mainline.wks.
-UENV_IMG_KIB ?= "8192"
+UENV_IMG_KIB = "${@int(d.getVar('SUPERBIRD_ENV_PART_SIZE')) * 1024}"
 
 do_compile() {
     mkenvimage -s ${UBOOT_ENV_SIZE} -o ${B}/uboot.env ${UNPACKDIR}/uboot-env.txt

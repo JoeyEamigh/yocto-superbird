@@ -1,4 +1,4 @@
-# bridgething-timezone owns /etc/localtime and /etc/timezone; strip them out of tzdata
+# superbird-timezone owns /etc/localtime and /etc/timezone; strip them out of tzdata
 INSTALL_TIMEZONE_FILE = "0"
 
 do_install:append() {

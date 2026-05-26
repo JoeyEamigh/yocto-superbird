@@ -1,16 +1,16 @@
 [Unit]
 Description=Bridgething daemon
-After=network.target bridgething-init.service bridgething-opt-init.service
+After=network.target bridgething-init.service opt-overlay@bridgething.service
 Wants=bluetooth.service
-Requires=bridgething-opt-init.service
-Conflicts=bridgething-als.service
+Requires=opt-overlay@bridgething.service
+Conflicts=superbird-als.service
 StartLimitIntervalSec=60
 StartLimitBurst=3
 
 [Service]
 Type=notify
 Environment=RUST_LOG=info,bluer=warn
-ExecStart=/usr/bin/bridgething
+ExecStart=/opt/bridgething/daemon/bridgething.current
 Restart=on-failure
 RestartSec=2
 TimeoutStartSec=30

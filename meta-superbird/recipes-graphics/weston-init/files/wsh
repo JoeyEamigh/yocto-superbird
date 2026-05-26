@@ -1,0 +1,30 @@
+#!/bin/sh
+# wsh - run a command against the boot-weston Wayland session.
+#
+# The weston systemd unit creates its socket at
+# $XDG_RUNTIME_DIR/wayland-1 with XDG_RUNTIME_DIR=/run/weston. This
+# wrapper just exports those two env vars and exec's the command with
+# systemd-run to detach from shell session.
+#
+# Usage:
+#   wsh weston-simple-egl
+#   wsh glmark2-es2-wayland
+#   wsh weston-info
+
+
+if [ "$#" -eq 0 ]; then
+    cat <<EOF
+usage: wsh <cmd> [args...]
+Runs <cmd> with WAYLAND_DISPLAY/XDG_RUNTIME_DIR set to the boot weston
+session. The compositor must already be running (systemctl status
+weston).
+EOF
+    exit 2
+fi
+
+export WAYLAND_DISPLAY=wayland-1
+export XDG_RUNTIME_DIR=/run/weston
+systemd-run --unit=foo --quiet \
+    --setenv=WAYLAND_DISPLAY=wayland-1 \
+    --setenv=XDG_RUNTIME_DIR=/run/weston \
+    "$@"

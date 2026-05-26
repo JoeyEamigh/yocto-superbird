@@ -3,7 +3,7 @@ Description=Bridgething MFi i2c-3 dev proxy
 Documentation=https://github.com/JoeyEamigh/bridgething
 After=network.target
 # bridgething.service owns /dev/i2c-3 + backlight; conflict instead of racing
-Conflicts=bridgething.service bridgething-als.service
+Conflicts=bridgething.service superbird-als.service
 ConditionPathExists=/dev/i2c-3
 ConditionPathExists=/sys/class/backlight/backlight/brightness
 

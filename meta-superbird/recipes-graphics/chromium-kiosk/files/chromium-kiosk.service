@@ -1,0 +1,27 @@
+[Unit]
+Description=Chromium kiosk
+BindsTo=superbird-weston.service
+After=superbird-weston.service
+PartOf=superbird-weston.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/chromium-kiosk
+Environment=XDG_RUNTIME_DIR=/run/weston
+Environment=WAYLAND_DISPLAY=wayland-1
+Environment=XCURSOR_THEME=blank
+Environment=XCURSOR_PATH=/usr/share/icons
+# block chromium's setpriority(-8) on UI/IO/GPU threads; cap drop + nice limit + nnp together
+CapabilityBoundingSet=~CAP_SYS_NICE
+AmbientCapabilities=
+LimitNICE=20
+NoNewPrivileges=yes
+CacheDirectory=chromium-kiosk
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -S /run/weston/wayland-1 ] && exit 0; sleep 0.5; done; exit 1'
+ExecStart=/usr/bin/chromium-kiosk-launch
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=5
+
+[Install]
+WantedBy=superbird-weston.service

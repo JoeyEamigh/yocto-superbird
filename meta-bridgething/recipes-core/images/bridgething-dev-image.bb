@@ -1,6 +1,8 @@
 SUMMARY = "Bridgething development image"
-DESCRIPTION = "Kitchen-sink iteration image: same partition geometry as prod, weston desktop-shell with panel + VNC, dev tools, debug auth."
+DESCRIPTION = "Iteration image: weston desktop-shell with panel + VNC, dev tools, debug auth."
 LICENSE = "MIT"
+
+SUPERBIRD_ROOTFS_TYPE = "squashfs-lz4"
 
 require bridgething-image-base.inc
 
@@ -12,5 +14,5 @@ IMAGE_INSTALL:append = " \
 
 BRIDGETHING_CHANNEL = "dev"
 BRIDGETHING_IMAGE_VARIANT = "dev"
-# -dev suffix keeps the composite version unique vs stable at the same DISTRO_VERSION
+# suffix keeps the composite version unique vs stable at the same DISTRO_VERSION.
 BRIDGETHING_IMAGE_VERSION = "${DISTRO_VERSION}-dev"
