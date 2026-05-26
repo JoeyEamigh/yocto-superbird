@@ -2,18 +2,17 @@ header:
   version: 18
   includes:
     - repo: yocto-superbird
-      file: kas/base.yml
+      file: kas/superbird.yml
 
 distro: bridgething
 
-machine: superbird
-
 target:
   - bridgething-dev-image
-  - bridgething-update
   - bridgething-update-dev
+  - bridgething-update-dev-delta
   - bridgething-prod-image
   - bridgething-update-prod
+  - bridgething-update-prod-delta
 
 repos:
   yocto-superbird:

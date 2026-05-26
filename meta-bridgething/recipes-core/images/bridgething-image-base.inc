@@ -1,5 +1,8 @@
 inherit core-image
 inherit superbird-headroom-check
+inherit mainline-flashthing
+
+MAINLINE_FLASHTHING_WITH_BANDAID = "1"
 
 require bridgething-chromium-slim.inc
 
@@ -31,6 +34,7 @@ do_image_wic[depends] += " \
     virtual/kernel:do_deploy \
     superbird-uenv:do_deploy \
     superbird-extlinux:do_deploy \
+    superbird-logo:do_deploy \
 "
 
 EXTRA_IMAGEDEPENDS += "superbird-uboot bridgething-bandaid"

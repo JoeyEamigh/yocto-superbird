@@ -1,0 +1,19 @@
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/superbird.yml
+
+target:
+  - superbird-kiosk-example-image
+
+local_conf_header:
+  kiosk-url: |
+    CHROMIUM_KIOSK_URL = "file:///usr/share/superbird-kiosk-default/index.html"
+
+repos:
+  yocto-superbird:
+    path: .
+    layers:
+      meta-superbird:
+      examples/meta-superbird-kiosk-example:

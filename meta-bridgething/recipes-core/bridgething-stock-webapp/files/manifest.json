@@ -1,0 +1,10 @@
+{
+  "id": "b12be731-416c-4cf7-8a91-3d2f19a45e21",
+  "name": "Spotify",
+  "version": "8.9.2",
+  "description": "Built-in Spotify Car Thing UI",
+  "icon": "spotify.svg",
+  "role": "standard",
+  "config": [],
+  "permissions": []
+}

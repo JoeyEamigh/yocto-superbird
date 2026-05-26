@@ -16,6 +16,9 @@ RDEPENDS:${PN} = " \
     superbird-usb-gadget \
     superbird-mdns \
     superbird-als \
+    superbird-provision \
+    superbird-slot-ok \
+    superbird-cpufreq-cap \
     cursor-suppress \
     superbird-fbpaint \
     bridgething-stock-webapp \

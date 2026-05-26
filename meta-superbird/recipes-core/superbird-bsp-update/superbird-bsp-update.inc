@@ -9,19 +9,22 @@ SWUPDATE_SIGNING ??= ""
 
 inherit swupdate
 
-# so cross-layer wrappers find sw-description in this dir.
-FILESEXTRAPATHS:prepend := "${@os.path.dirname(bb.utils.which(d.getVar('BBPATH'), 'recipes-core/superbird-bsp-update/superbird-bsp-update.inc'))}/files:"
+# variant selects which sw-description tree (files/full or files/delta) the wrapper consumes.
+SUPERBIRD_OTA_SW_DESCRIPTION_VARIANT ?= "full"
+
+# lazy `=` so the variant variable is resolved at use, not at .inc parse time.
+FILESEXTRAPATHS:prepend = "${@os.path.dirname(bb.utils.which(d.getVar('BBPATH'), 'recipes-core/superbird-bsp-update/superbird-bsp-update.inc'))}/files/${SUPERBIRD_OTA_SW_DESCRIPTION_VARIANT}:"
 
 SRC_URI = "file://sw-description"
 
-SUPERBIRD_OTA_SOURCE_IMAGE ??= "superbird-elle-image"
+SUPERBIRD_OTA_SOURCE_IMAGE ??= ""
 SUPERBIRD_OTA_SOURCE_LINKNAME = "${SUPERBIRD_OTA_SOURCE_IMAGE}-${MACHINE}"
 
 SUPERBIRD_OTA_SYSTEM_ARTIFACT ??= ""
 SUPERBIRD_OTA_SYSTEM_CPIO_NAME ??= ""
 
 python __anonymous() {
-    for v in ("SUPERBIRD_OTA_SYSTEM_ARTIFACT", "SUPERBIRD_OTA_SYSTEM_CPIO_NAME"):
+    for v in ("SUPERBIRD_OTA_SOURCE_IMAGE", "SUPERBIRD_OTA_SYSTEM_ARTIFACT", "SUPERBIRD_OTA_SYSTEM_CPIO_NAME"):
         if not d.getVar(v):
             bb.fatal("%s must be set by the wrapping recipe" % v)
 }

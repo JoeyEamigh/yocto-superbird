@@ -1,5 +1,7 @@
 SUMMARY = "Bridgething prod-image delta OTA (.swu)"
 
+SUPERBIRD_OTA_SW_DESCRIPTION_VARIANT = "delta"
+
 require recipes-core/superbird-bsp-update/superbird-bsp-update.inc
 
 SUPERBIRD_OTA_SOURCE_IMAGE = "bridgething-prod-image"

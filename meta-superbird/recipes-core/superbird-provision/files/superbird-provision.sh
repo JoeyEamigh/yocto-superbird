@@ -14,17 +14,11 @@ if sgdisk -p "$DISK" 2>/dev/null | grep -qw data; then
 fi
 
 if [ "$REQUIRE_HEADROOM" = "1" ]; then
-    free_sectors=$(sgdisk -p "$DISK" 2>/dev/null | awk -F: '/Total free space is/ { gsub(/[^0-9]/, "", $2); print $2 }')
-    if [ -z "$free_sectors" ]; then
-        end=$(sgdisk -p "$DISK" 2>/dev/null | awk '/last usable sector is/ { print $NF }')
-        first=$(sgdisk -p "$DISK" 2>/dev/null | awk '/first usable sector is/ { print $NF }')
-        last_alloc=$(sgdisk -p "$DISK" 2>/dev/null | awk '/^ +[0-9]+ +/ { print $3 }' | sort -n | tail -1)
-        if [ -n "$end" ] && [ -n "$first" ] && [ -n "$last_alloc" ]; then
-            free_sectors=$((end - last_alloc))
-        else
-            free_sectors=0
-        fi
-    fi
+    disk_sectors=$(blockdev --getsz "$DISK" 2>/dev/null || echo 0)
+    last_alloc=$(sgdisk -p "$DISK" 2>/dev/null | awk '/^ +[0-9]+ +/ { print $3 }' | sort -n | tail -1)
+    last_alloc=${last_alloc:-0}
+    free_sectors=$((disk_sectors - last_alloc - 34))
+    [ "$free_sectors" -lt 0 ] && free_sectors=0
     free_mib=$((free_sectors / 2048))
     required=$((BOOT_PART_MIB + ROOT_PART_MIB + MARGIN_MIB))
     if [ "$free_mib" -lt "$required" ]; then

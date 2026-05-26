@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# boot the device into the kernel once from usb burn mode. burn-mode default resumes on next reset.
+# exit amlogic mask-rom usb mode and cold-boot the on-disk image. ram-staged u-boot
+# resets; an rts pulse via the ftdi serial is the fallback path.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,8 +12,6 @@ if ! command -v "$FLASHTHING" >/dev/null 2>&1; then
   exit 2
 fi
 
-"$FLASHTHING" --bulkcmd "setenv want_boot kernel"
-"$FLASHTHING" --bulkcmd "saveenv"
 "$FLASHTHING" --bulkcmd "reset" || true
 
 "$RESET" --pulse --duration-ms 200 >/dev/null 2>&1 || true

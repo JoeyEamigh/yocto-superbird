@@ -15,14 +15,14 @@ build target=default:
   #!/usr/bin/env bash
   set -euo pipefail
   args=()
-  if [ "{{target}}" = "dev-local" ]; then
-    if [ ! -f kas/dev-local.yml ]; then
-      echo "kas/dev-local.yml missing - copy kas/dev-local.example.yml and edit BRIDGETHING_LOCAL" >&2
+  if [ "{{target}}" = "bridgething-local" ]; then
+    if [ ! -f kas/bridgething-local.yml ]; then
+      echo "kas/bridgething-local.yml missing - copy kas/bridgething-local.example.yml and edit BRIDGETHING_LOCAL" >&2
       exit 1
     fi
-    local_dir=$(sed -n 's/.*BRIDGETHING_LOCAL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' kas/dev-local.yml | head -n1)
+    local_dir=$(sed -n 's/.*BRIDGETHING_LOCAL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' kas/bridgething-local.yml | head -n1)
     if [ -z "$local_dir" ] || [ ! -d "$local_dir" ]; then
-      echo "BRIDGETHING_LOCAL in kas/dev-local.yml is missing or not a directory: '$local_dir'" >&2
+      echo "BRIDGETHING_LOCAL in kas/bridgething-local.yml is missing or not a directory: '$local_dir'" >&2
       exit 1
     fi
     args+=(--runtime-args "-v $local_dir:$local_dir")
@@ -102,13 +102,21 @@ reset-hold:
 reset-pulse duration_ms="200":
   scripts/superbird-reset-hold.py --pulse --duration-ms {{duration_ms}}
 
-# Boot the Superbird into our mainline kernel from stock u-boot.
+# Exit mask-rom usb mode and cold-boot into the on-disk image.
 boot-kernel:
   scripts/superbird-boot-kernel.sh
 
-# Drop a running device back into USB burn mode for the next boot.
-reboot-to-burn:
-  scripts/superbird-reboot-to-burn
+# Reboot a running device into amlogic mask-rom usb mode (1b8e:c003) for flashthing-cli.
+reboot-to-maskrom:
+  scripts/superbird-reboot-to-maskrom
+
+# Reboot a running device into u-boot fastboot (env / partition writes without a full wic flash).
+reboot-to-fastboot:
+  scripts/superbird-reboot-to-fastboot
+
+# Write a single gpt partition over u-boot fastboot (skips the full wic flash).
+flash-fast partlabel file="":
+  scripts/superbird-flash-fast {{partlabel}} {{file}}
 
 # Push a webapp bundle into /var/bridgething/webapps/<name>/.
 push-webapp local name="":

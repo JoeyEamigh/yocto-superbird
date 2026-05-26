@@ -41,7 +41,13 @@ RDEPENDS:${PN} += "opt-overlay swupdate systemd"
 
 DAEMON_FLOOR_DIR = "${nonarch_libdir}/bridgething/daemon"
 
+# opt-overlay@bridgething bind-mount target. squashfs is ro, so the dir must exist in the
+# rootfs at install time; mkdir -p in the unit's ExecStartPre would fail to create /opt.
+OPT_OVERLAY_TARGET = "/opt/bridgething"
+
 do_install() {
+    install -d ${D}${OPT_OVERLAY_TARGET}
+
     install -d ${D}${DAEMON_FLOOR_DIR}
     install -m 0755 ${B}/target/${CARGO_TARGET_SUBDIR}/bridgething \
         ${D}${DAEMON_FLOOR_DIR}/bridgething.current
@@ -68,6 +74,7 @@ do_install() {
 PACKAGES =+ "${PN}-dev-config"
 
 FILES:${PN} = " \
+    ${OPT_OVERLAY_TARGET} \
     ${DAEMON_FLOOR_DIR}/bridgething.current \
     ${libexecdir}/bridgething-rollback \
     ${systemd_system_unitdir}/bridgething.service \

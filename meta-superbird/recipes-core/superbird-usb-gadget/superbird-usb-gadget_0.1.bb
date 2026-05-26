@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = "\
     file://superbird-usb-gadget.sh \
     file://superbird-usb-gadget.service \
-    file://11-usb-ncm.network \
+    file://90-usb-ncm-fallback.network \
     file://adbd-superbird.conf \
     file://usb-debugging-enabled \
 "
@@ -33,8 +33,12 @@ do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${S}/superbird-usb-gadget.service ${D}${systemd_system_unitdir}/
 
+    # fallback applies only if the gadget script's per-serial /run/systemd/network/11-usb-ncm.network
+    # was not generated (boot before the script ran, or the script was disabled). lower-numbered
+    # files win first-match, so the per-serial 11- file wins when present, and this 90- file
+    # provides a single-device default otherwise.
     install -d ${D}${sysconfdir}/systemd/network
-    install -m 0644 ${S}/11-usb-ncm.network ${D}${sysconfdir}/systemd/network/
+    install -m 0644 ${S}/90-usb-ncm-fallback.network ${D}${sysconfdir}/systemd/network/
 
     # drop-in retargets android-tools-adbd at the composite gadget
     install -d ${D}${systemd_system_unitdir}/android-tools-adbd.service.d
@@ -53,7 +57,7 @@ FILES:${PN} = "\
     ${libexecdir}/superbird-usb-gadget \
     ${systemd_system_unitdir}/superbird-usb-gadget.service \
     ${systemd_system_unitdir}/android-tools-adbd.service.d/superbird.conf \
-    ${sysconfdir}/systemd/network/11-usb-ncm.network \
+    ${sysconfdir}/systemd/network/90-usb-ncm-fallback.network \
     ${sysconfdir}/usb-debugging-enabled \
 "
 

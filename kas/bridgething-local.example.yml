@@ -3,12 +3,12 @@
 # checkout listed in each recipe's SRC_URI.
 #
 # Usage:
-#   1. Copy this file to kas/dev-local.yml (gitignored):
-#        cp kas/dev-local.example.yml kas/dev-local.yml
+#   1. Copy this file to kas/bridgething-local.yml (gitignored):
+#        cp kas/bridgething-local.example.yml kas/bridgething-local.yml
 #   2. Edit BRIDGETHING_LOCAL below to point at your bridgething checkout.
 #      That path is the only host-specific value; the Justfile reads it
 #      back out of this file and bind-mounts it into the kas container.
-#   3. Build with `just build dev-local` (instead of the usual
+#   3. Build with `just build bridgething-local` (instead of the usual
 #      `just build` / `just build bridgething`).
 #
 # Mechanic: bitbake's externalsrc.bbclass replaces do_fetch/do_unpack

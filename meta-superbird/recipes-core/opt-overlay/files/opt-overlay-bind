@@ -1,5 +1,8 @@
 #!/bin/sh
-# bind /opt/<vendor> to bandaid if mounted, else to the rootfs floor.
+# bind /opt/<vendor> to bandaid. seed bandaid from the rootfs floor if the
+# vendor subdir is missing so the bind always lands on a writable surface;
+# binding the ro rootfs would EROFS-fail any subsequent daemon/builtin-webapp
+# ota swap.
 set -eu
 
 VENDOR=${1:?vendor name required}
@@ -7,15 +10,24 @@ BANDAID=/var/lib/bandaid/${VENDOR}
 FACTORY=/usr/lib/${VENDOR}
 TARGET=/opt/${VENDOR}
 
-if mountpoint -q /var/lib/bandaid && [ -d "$BANDAID" ]; then
-    SRC=$BANDAID
-else
-    SRC=$FACTORY
+if ! mountpoint -q /var/lib/bandaid; then
+    echo "opt-overlay: /var/lib/bandaid not mounted, binding ${VENDOR} factory ro" >&2
+    if [ ! -d "$FACTORY" ]; then
+        echo "opt-overlay: no factory for ${VENDOR}" >&2
+        exit 1
+    fi
+    mount --bind "$FACTORY" "$TARGET"
+    exit 0
 fi
 
-if [ ! -d "$SRC" ]; then
-    echo "opt-overlay: no source for ${VENDOR}" >&2
-    exit 1
+if [ ! -d "$BANDAID" ]; then
+    if [ ! -d "$FACTORY" ]; then
+        echo "opt-overlay: no factory for ${VENDOR}; cannot seed bandaid" >&2
+        exit 1
+    fi
+    echo "opt-overlay: seeding ${BANDAID} from ${FACTORY}" >&2
+    mkdir -p "$BANDAID"
+    cp -a "${FACTORY}/." "${BANDAID}/"
 fi
 
-mount --bind "$SRC" "$TARGET"
+mount --bind "$BANDAID" "$TARGET"

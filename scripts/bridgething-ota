@@ -35,8 +35,10 @@ case "$IMAGE" in
     *) echo "[ota] --image must be 'dev' or 'prod', got: $IMAGE" >&2; exit 2 ;;
 esac
 
-: "${SWU:=$DEPLOY_DIR/bridgething-update-${IMAGE}-superbird.swu}"
-: "${ZCK:=$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird.squashfs-lz4.zck}"
+: "${SWU:=$DEPLOY_DIR/bridgething-update-${IMAGE}-delta-superbird.swu}"
+if [ -z "$ZCK" ]; then
+    ZCK="$(ls "$DEPLOY_DIR/bridgething-${IMAGE}-image-superbird".*.zck 2>/dev/null | grep -v zckheader | head -n1)"
+fi
 
 [ -f "$SWU" ] || { echo "[ota] swu not found: $SWU" >&2; exit 1; }
 [ -f "$ZCK" ] || { echo "[ota] zck not found: $ZCK" >&2; exit 1; }

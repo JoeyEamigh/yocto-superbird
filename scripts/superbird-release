@@ -45,7 +45,8 @@ upload_variant() {
   local channel
   channel="$(variant_to_channel "$variant")"
 
-  local swu="$DEPLOY/bridgething-update-${variant}-superbird.swu"
+  local swu_full="$DEPLOY/bridgething-update-${variant}-superbird.swu"
+  local swu_delta="$DEPLOY/bridgething-update-${variant}-delta-superbird.swu"
   local zip="$DEPLOY/bridgething-${variant}-image-superbird-flashthing.zip"
 
   # glob the .zck since the fstype varies per image variant
@@ -57,7 +58,7 @@ upload_variant() {
     exit 1
   fi
 
-  for f in "$swu" "$zck" "$zip"; do
+  for f in "$swu_full" "$swu_delta" "$zck" "$zip"; do
     if [[ ! -e "$f" ]]; then
       echo "[release] missing $(basename "$f") for variant $variant; run 'just build' first" >&2
       exit 1
@@ -65,7 +66,7 @@ upload_variant() {
   done
 
   local version
-  version="${SUPERBIRD_RELEASE_VERSION:-$(version_from_artifact "$swu")}"
+  version="${SUPERBIRD_RELEASE_VERSION:-$(version_from_artifact "$swu_full")}"
   if [[ -z "${SUPERBIRD_RELEASE_VERSION:-}" ]]; then
     echo "[release] WARN: SUPERBIRD_RELEASE_VERSION unset; using artifact mtime $version" >&2
   fi
@@ -74,9 +75,9 @@ upload_variant() {
   local dest="${RCLONE_REMOTE}:${R2_BUCKET}/${prefix}"
 
   echo "[release] variant=$variant channel=$channel version=$version -> $dest"
-  rclone copyto --progress --copy-links "$swu" "$dest/$(basename "$swu")" --s3-no-check-bucket
-  rclone copyto --progress --copy-links "$zck" "$dest/$(basename "$zck")" --s3-no-check-bucket
-  rclone copyto --progress --copy-links "$zip" "$dest/$(basename "$zip")" --s3-no-check-bucket
+  for f in "$swu_full" "$swu_delta" "$zck" "$zip"; do
+    rclone copyto --progress --copy-links "$f" "$dest/$(basename "$f")" --s3-no-check-bucket
+  done
 }
 
 if [[ "$VARIANT_ARG" == "all" ]]; then

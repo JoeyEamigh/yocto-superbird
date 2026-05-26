@@ -52,7 +52,7 @@ echo "[publish] variant=$VARIANT channel=$CHANNEL image=$IMAGE_VERSION daemon=$D
 
 "$SCRIPT_DIR/superbird-release" "$VARIANT"
 
-DAEMON_BIN="$DAEMON_WORK/$DAEMON_VERSION/image/usr/libexec/bridgething"
+DAEMON_BIN="$DAEMON_WORK/$DAEMON_VERSION/image/usr/lib/bridgething/daemon/bridgething.current"
 IMAGE_ZIP="$DEPLOY/bridgething-${VARIANT}-image-superbird-flashthing.zip"
 
 [[ -x "$DAEMON_BIN" ]] || { echo "[publish] daemon binary missing: $DAEMON_BIN" >&2; exit 1; }

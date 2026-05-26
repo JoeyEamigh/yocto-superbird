@@ -5,8 +5,8 @@
 /.kas/
 
 # local-only kas overlay for externalsrc against an unpushed bridgething
-# working tree — see kas/dev-local.yml.example
-/kas/dev-local.yml
+# working tree; see kas/bridgething-local.example.yml
+/kas/bridgething-local.yml
 
 # bitbake build dir + ccache + flash artifact staging
 /build/

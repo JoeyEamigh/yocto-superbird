@@ -4,6 +4,7 @@ LICENSE = "MIT"
 
 inherit core-image
 inherit superbird-headroom-check
+inherit mainline-flashthing
 
 IMAGE_FEATURES += " \
     ssh-server-openssh \
@@ -20,15 +21,12 @@ IMAGE_INSTALL = " \
     superbird-firmware \
     superbird-bluetooth \
     superbird-usb-gadget \
-    bluez5 \
-    e2fsprogs \
-    e2fsprogs-mke2fs \
-    e2fsprogs-e2fsck \
-    e2fsprogs-tune2fs \
-    libubootenv-bin \
     superbird-provision \
     superbird-cpufreq-cap \
     superbird-slot-ok \
+    libubootenv-bin \
+    e2fsprogs-mke2fs \
+    e2fsprogs-e2fsck \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static weston-init"
@@ -41,6 +39,7 @@ do_image_wic[depends] += " \
     virtual/kernel:do_deploy \
     superbird-uenv:do_deploy \
     superbird-extlinux:do_deploy \
+    superbird-logo:do_deploy \
 "
 
 # u-boot ships separately for boot0/boot1, not packed into the wic gpt.
