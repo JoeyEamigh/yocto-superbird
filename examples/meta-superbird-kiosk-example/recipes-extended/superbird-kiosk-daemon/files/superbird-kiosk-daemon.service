@@ -1,0 +1,13 @@
+[Unit]
+Description=Superbird kiosk example daemon
+Requires=opt-overlay@superbird-kiosk.service
+After=opt-overlay@superbird-kiosk.service
+
+[Service]
+Type=simple
+ExecStart=/opt/superbird-kiosk/daemon/kioskd.current
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

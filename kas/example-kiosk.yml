@@ -4,12 +4,15 @@ header:
     - repo: yocto-superbird
       file: kas/superbird.yml
 
-target:
-  - superbird-kiosk-example-image
+distro: superbird-kiosk
 
-local_conf_header:
-  kiosk-url: |
-    CHROMIUM_KIOSK_URL = "file:///usr/share/superbird-kiosk-default/index.html"
+target:
+  - superbird-kiosk-dev-image
+  - superbird-kiosk-prod-image
+  - superbird-kiosk-update-dev
+  - superbird-kiosk-update-dev-delta
+  - superbird-kiosk-update-prod
+  - superbird-kiosk-update-prod-delta
 
 repos:
   yocto-superbird:

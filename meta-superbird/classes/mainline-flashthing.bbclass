@@ -6,7 +6,8 @@
 #   bandaid.ext4         optional; written at the bandaid partition's LBA
 #   meta.json            metadataVersion: 2; uses writeBootPartition + writeUserArea
 #
-# bandaid is optional: set MAINLINE_FLASHTHING_WITH_BANDAID = "1" to splice it in.
+# bandaid is optional: set MAINLINE_FLASHTHING_WITH_BANDAID = "1" to splice it in
+# and MAINLINE_FLASHTHING_BANDAID_RECIPE to the recipe that deploys bandaid.ext4.
 # env-only zip emitted alongside, writing just the env partition LBA range.
 
 DEPENDS:append = " superbird-uboot zip-native util-linux-native"
@@ -18,10 +19,14 @@ do_flashthing_zip[depends] += " \
 "
 
 MAINLINE_FLASHTHING_WITH_BANDAID ??= "0"
+MAINLINE_FLASHTHING_BANDAID_RECIPE ??= ""
+
+_MAINLINE_FLASHTHING_BANDAID_DEP = "${@(d.getVar('MAINLINE_FLASHTHING_BANDAID_RECIPE') + ':do_deploy') if d.getVar('MAINLINE_FLASHTHING_WITH_BANDAID') == '1' and d.getVar('MAINLINE_FLASHTHING_BANDAID_RECIPE') else ''}"
+do_flashthing_zip[depends] += "${_MAINLINE_FLASHTHING_BANDAID_DEP}"
 
 python __anonymous() {
-    if d.getVar('MAINLINE_FLASHTHING_WITH_BANDAID') == "1":
-        d.appendVar('do_flashthing_zip[depends]', ' bridgething-bandaid:do_deploy')
+    if d.getVar('MAINLINE_FLASHTHING_WITH_BANDAID') == "1" and not d.getVar('MAINLINE_FLASHTHING_BANDAID_RECIPE'):
+        bb.fatal("MAINLINE_FLASHTHING_BANDAID_RECIPE must name the recipe that deploys bandaid.ext4")
 }
 
 do_flashthing_zip[vardepsexclude] = "DATETIME"

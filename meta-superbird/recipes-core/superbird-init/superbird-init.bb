@@ -1,5 +1,5 @@
-SUMMARY = "Bridgething first-boot init"
-DESCRIPTION = "Renders /var/lib/superbird/meta.json from a template each boot (patching in efuse fields) and seeds the bluez alias."
+SUMMARY = "Superbird first-boot init"
+DESCRIPTION = "Renders /var/lib/superbird/meta.json from a template each boot (patching in efused btMac + serialNumber) and seeds the bluez alias. Also redirects sshd's keygen target so ssh keys persist across the ro rootfs."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -17,14 +17,14 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "superbird-init.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-# script only needs busybox utilities; gawk + mpfr stay out of the rootfs
 RDEPENDS:${PN} = ""
 
-# package-scope literals only here; per-image state lands via IMAGE_PREPROCESS_COMMAND
+# distro / machine scope literals substitute here; per-image fields (imageBuildId,
+# imageBuildDate, plus anything downstream layers inject) substitute via the
+# superbird-image bbclass at IMAGE_PREPROCESS time.
 do_install() {
     install -d ${D}${datadir}/superbird
 
-    # render the @VAR@ placeholders at do_install so the values are fresh, not fetch-time
     sed \
         -e "s|@DISTRO_NAME@|${DISTRO_NAME}|g" \
         -e "s|@DISTRO_VERSION@|${DISTRO_VERSION}|g" \
@@ -47,7 +47,6 @@ do_install() {
     install -d ${D}${sysconfdir}
     ln -s ../var/lib/superbird/meta.json ${D}${sysconfdir}/superbird
 
-    # /etc/ssh is ro; SYSCONFDIR=/var/lib/ssh and symlinks make sshd's keygen target writable
     install -d ${D}${sysconfdir}/default
     install -m 0644 ${S}/default-ssh ${D}${sysconfdir}/default/ssh
 

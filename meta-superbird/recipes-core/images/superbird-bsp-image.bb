@@ -1,9 +1,10 @@
 SUMMARY = "Superbird BSP-only image"
-DESCRIPTION = "Mainline kernel + busybox + openssh + USB-CDC-NCM gadget for bring-up."
+DESCRIPTION = "Mainline kernel + busybox + openssh + USB-CDC-NCM gadget for bring-up. No graphics, no application. Fork examples/meta-superbird-kiosk-example/ to layer on a kiosk."
 LICENSE = "MIT"
 
 inherit core-image
 inherit superbird-headroom-check
+inherit superbird-image
 inherit mainline-flashthing
 
 IMAGE_FEATURES += " \
@@ -17,16 +18,7 @@ IMAGE_FEATURES += " \
 
 IMAGE_INSTALL = " \
     packagegroup-core-boot \
-    superbird-base-files \
-    superbird-firmware \
-    superbird-bluetooth \
-    superbird-usb-gadget \
-    superbird-provision \
-    superbird-cpufreq-cap \
-    superbird-slot-ok \
-    libubootenv-bin \
-    e2fsprogs-mke2fs \
-    e2fsprogs-e2fsck \
+    packagegroup-superbird-runtime \
 "
 
 BAD_RECOMMENDATIONS += "kernel-modules udev-hwdb wpa-supplicant wireless-regdb wireless-regdb-static weston-init"

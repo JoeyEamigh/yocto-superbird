@@ -1,8 +1,10 @@
 inherit core-image
 inherit superbird-headroom-check
+inherit superbird-image
 inherit mainline-flashthing
 
 MAINLINE_FLASHTHING_WITH_BANDAID = "1"
+MAINLINE_FLASHTHING_BANDAID_RECIPE = "bridgething-bandaid"
 
 require bridgething-chromium-slim.inc
 
@@ -37,28 +39,35 @@ BRIDGETHING_CHANNEL ?= "stable"
 BRIDGETHING_IMAGE_VARIANT ?= "prod"
 BRIDGETHING_IMAGE_VERSION ?= "${DISTRO_VERSION}"
 
-# stamps frozen at preprocess so DATETIME doesn't churn package sstate.
-BRIDGETHING_IMAGE_BUILD_ID = "${DISTRO}-${DISTRO_VERSION}-${DATETIME}"
-BRIDGETHING_IMAGE_BUILD_DATE = "${@d.getVar('DATETIME')[0:4]}-${@d.getVar('DATETIME')[4:6]}-${@d.getVar('DATETIME')[6:8]}T${@d.getVar('DATETIME')[8:10]}:${@d.getVar('DATETIME')[10:12]}:${@d.getVar('DATETIME')[12:14]}Z"
-BRIDGETHING_IMAGE_BUILD_ID[vardepsexclude] = "DATETIME"
-BRIDGETHING_IMAGE_BUILD_DATE[vardepsexclude] = "DATETIME"
-
+# inject channel + imageVariant + imageVersion before the closing brace; the
+# BSP's superbird_meta_postprocess (run earlier in IMAGE_PREPROCESS_COMMAND)
+# already substituted @IMAGE_BUILD_ID@ + @IMAGE_BUILD_DATE@.
 bridgething_meta_postprocess() {
-    sed -i \
-        -e "s|@BRIDGETHING_CHANNEL@|${BRIDGETHING_CHANNEL}|g" \
-        -e "s|@BRIDGETHING_IMAGE_VARIANT@|${BRIDGETHING_IMAGE_VARIANT}|g" \
-        -e "s|@BRIDGETHING_IMAGE_VERSION@|${BRIDGETHING_IMAGE_VERSION}|g" \
-        -e "s|@IMAGE_BUILD_ID@|${BRIDGETHING_IMAGE_BUILD_ID}|g" \
-        -e "s|@IMAGE_BUILD_DATE@|${BRIDGETHING_IMAGE_BUILD_DATE}|g" \
-        ${IMAGE_ROOTFS}${datadir}/superbird/meta.json.in
+    META=${IMAGE_ROOTFS}${datadir}/superbird/meta.json.in
+    if [ ! -f "$META" ]; then
+        return
+    fi
+    awk -v c="${BRIDGETHING_CHANNEL}" -v v="${BRIDGETHING_IMAGE_VARIANT}" -v ver="${BRIDGETHING_IMAGE_VERSION}" '
+        /^}$/ {
+            print "  \"channel\": \"" c "\","
+            print "  \"imageVariant\": \"" v "\","
+            print "  \"imageVersion\": \"" ver "\""
+            print
+            next
+        }
+        /^  "imageBuildDate":/ {
+            sub(/$/, ",")
+            print
+            next
+        }
+        { print }
+    ' "$META" > "$META.tmp" && mv "$META.tmp" "$META"
 }
-# bitbake's sed-arg parser misses ${VAR} refs; declare deps so postprocess reruns.
+
 _BRIDGETHING_META_VARDEPS = " \
     BRIDGETHING_CHANNEL \
     BRIDGETHING_IMAGE_VARIANT \
     BRIDGETHING_IMAGE_VERSION \
-    BRIDGETHING_IMAGE_BUILD_ID \
-    BRIDGETHING_IMAGE_BUILD_DATE \
 "
 bridgething_meta_postprocess[vardeps] += "${_BRIDGETHING_META_VARDEPS}"
 IMAGE_PREPROCESS_COMMAND[vardeps] += "${_BRIDGETHING_META_VARDEPS}"

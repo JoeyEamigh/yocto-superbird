@@ -1,18 +1,14 @@
 #!/bin/sh
-# Every-boot initialization for the Superbird:
-#   - Re-render /var/lib/superbird/meta.json from the build-time
-#     template, then patch in efuse-derived btMac + serialNumber.
-#     The on-disk file is purely a runtime artifact - all real
-#     persistent state lives in sqlite. Re-rendering each boot
-#     keeps the build-identity fields (channel, imageVariant,
-#     imageVersion, imageBuildId, ...) honest after an OTA or
-#     daemon push without depending on settings being wiped.
-#   - Seed /var/lib/bluetooth/<MAC>/settings with a friendly Alias
-#     so the device shows up as "Car Thing (SN: xxxx)" when
-#     advertising.
+# every-boot init for /etc/superbird:
+#   - re-render /var/lib/superbird/meta.json from the build-time template;
+#     rendering each boot keeps build-identity fields honest across OTA
+#     and binary pushes without depending on settings being wiped
+#   - patch in efuse-derived btMac + serialNumber
+#   - seed /var/lib/bluetooth/<MAC>/settings with a friendly Alias so the
+#     first BT advertisement carries the branded name
 #
-# /etc is on the read-only system partition, so /etc/superbird is a
-# symlink -> /var/lib/superbird/meta.json on the settings partition.
+# /etc is on the ro rootfs, so /etc/superbird is a symlink to the
+# rendered file on the writable data partition.
 
 set -eu
 
@@ -20,9 +16,6 @@ TEMPLATE="/usr/share/superbird/meta.json.in"
 META_DIR="/var/lib/superbird"
 META_PATH="$META_DIR/meta.json"
 
-# nvmem cell paths. Kernel names the files after the DTS reg, with
-# the offset baked in (e.g. bt-mac@6,0). Glob to tolerate future
-# DTS reshuffles.
 EFUSE_CELLS="/sys/bus/nvmem/devices/efuse0/cells"
 
 mkdir -p "$META_DIR"
@@ -30,9 +23,8 @@ mkdir -p "$META_DIR"
 cp "$TEMPLATE" "$META_PATH"
 chmod 0644 "$META_PATH"
 
-# Resolve cell paths via glob. Matches our DTS in
-# meson-g12a-superbird.dts: bt_mac at reg <0x6 0x6>, serial_number
-# at reg <0x12 0xc>.
+# kernel names efuse cell files after the dts reg with offset baked in
+# (e.g. bt-mac@6,0). glob so future dts reshuffles don't break parsing.
 BT_MAC_FILE=$(ls "$EFUSE_CELLS"/bt-mac@* 2>/dev/null | head -n 1)
 SERIAL_FILE=$(ls "$EFUSE_CELLS"/serial-number@* 2>/dev/null | head -n 1)
 
@@ -45,7 +37,7 @@ fi
 # bt-mac cell: 6 raw bytes -> uppercase colon-separated hex.
 bt_mac=$(hexdump -e '5/1 "%02X:" 1/1 "%02X"' "$BT_MAC_FILE")
 
-# serial-number cell: 12 ASCII bytes (e.g. "8558R481Q61R").
+# serial-number cell: 12 ASCII bytes.
 full_serial=$(cat "$SERIAL_FILE")
 serial=$(printf '%s' "$full_serial" | tail -c 4)
 
@@ -54,7 +46,6 @@ if [ "${#serial}" -ne 4 ] || [ "${#bt_mac}" -ne 17 ]; then
     exit 0
 fi
 
-# Only patch if still placeholder. Safe to re-run after manual edits.
 if grep -q '"btMac": ""' "$META_PATH"; then
     sed -i "s/\"btMac\": \"\"/\"btMac\": \"$bt_mac\"/" "$META_PATH"
 fi
@@ -62,9 +53,8 @@ if grep -q '"serialNumber": ""' "$META_PATH"; then
     sed -i "s/\"serialNumber\": \"\"/\"serialNumber\": \"$full_serial\"/" "$META_PATH"
 fi
 
-# Seed bluetooth alias. bluez reads this on adapter init; setting
-# it here means the very first BT advertisement carries the
-# branded name without bridgething needing to drive bluez itself.
+# bluez reads alias on adapter init; setting it here means the first BT
+# advertisement carries the branded name without an application driving bluez.
 bt_settings_dir="/var/lib/bluetooth/$bt_mac"
 bt_settings_file="$bt_settings_dir/settings"
 if [ ! -f "$bt_settings_file" ]; then

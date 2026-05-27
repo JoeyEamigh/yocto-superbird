@@ -1,7 +1,0 @@
-# Override openssh's keygen target. /etc/ssh is on the read-only
-# system partition, so sshd_check_keys can't write there. Point it
-# at /var/lib/ssh (settings partition, persistent across OTAs).
-# The matching /etc/ssh/ssh_host_*_key symlinks (shipped by
-# bridgething-init) make the default sshd_config find the keys
-# transparently.
-SYSCONFDIR=/var/lib/ssh

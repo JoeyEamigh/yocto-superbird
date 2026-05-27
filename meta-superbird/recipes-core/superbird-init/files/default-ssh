@@ -1,0 +1,4 @@
+# /etc/ssh is on the ro rootfs, so sshd_check_keys can't write there.
+# point sshd at /var/lib/ssh; the matching /etc/ssh/ssh_host_*_key
+# symlinks (shipped by superbird-init) keep the default sshd_config working.
+SYSCONFDIR=/var/lib/ssh

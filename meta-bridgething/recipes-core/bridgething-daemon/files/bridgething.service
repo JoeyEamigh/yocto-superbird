@@ -1,6 +1,6 @@
 [Unit]
 Description=Bridgething daemon
-After=network.target bridgething-init.service opt-overlay@bridgething.service
+After=network.target superbird-init.service opt-overlay@bridgething.service
 Wants=bluetooth.service
 Requires=opt-overlay@bridgething.service
 Conflicts=superbird-als.service

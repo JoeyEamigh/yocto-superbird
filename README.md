@@ -11,18 +11,19 @@ chromium kiosk example, or the bridgething stack.
 | Image | What you get | Use for |
 | --- | --- | --- |
 | `superbird-bsp-image` | kernel, busybox, sshd, USB-CDC gadget | bring-up; starting point for your own userspace |
-| `superbird-kiosk-example-image` | BSP + weston + chromium kiosk + a placeholder webapp | fork-template for any chromium kiosk |
-| `bridgething-prod-image` | ext4 read-only rootfs, chromium kiosk, bridgething daemon, OTA | the bridgething project's own production build |
+| `superbird-kiosk-prod-image` | ext4 ro rootfs, chromium kiosk, example daemon, placeholder webapp | fork-template for any chromium kiosk (prod variant) |
+| `superbird-kiosk-dev-image` | squashfs-lz4 rootfs, weston desktop + VNC + dev tools | fork-template for any chromium kiosk (dev variant) |
+| `bridgething-prod-image` | ext4 ro rootfs, chromium kiosk, bridgething daemon, OTA | the bridgething project's own production build |
 | `bridgething-dev-image` | squashfs-lz4 rootfs with weston desktop, VNC, dev tools | bridgething iteration |
 
-All four share the same GPT layout (env + boot_a + root_a + boot_b +
+All share the same GPT layout (env + boot_a + root_a + boot_b +
 root_b + bandaid + data) and the same OTA pipeline.
 
 ## Build
 
 ```bash
 just build superbird          # BSP only
-just build example-kiosk      # BSP + chromium kiosk + placeholder webapp
+just build example-kiosk      # BSP + chromium kiosk + example daemon (prod + dev variants)
 just build bridgething        # bridgething's full stack
 ```
 
@@ -39,7 +40,7 @@ Output lands in `build/tmp/deploy/images/superbird/`. Each image
 produces a flashthing zip:
 
 - `superbird-bsp-image-superbird-flashthing.zip`
-- `superbird-kiosk-example-image-superbird-flashthing.zip`
+- `superbird-kiosk-{prod,dev}-image-superbird-flashthing.zip`
 - `bridgething-{prod,dev}-image-superbird-flashthing.zip`
 
 ## Flash
@@ -50,7 +51,7 @@ wheel-click button while plugging in USB. From a booted device,
 
 ```bash
 just flash superbird-bsp-image
-just flash example-kiosk
+just flash superbird-kiosk-dev-image
 just flash bridgething-prod-image
 just boot-kernel              # exit mask-rom and cold-boot the new image
 ```
@@ -65,9 +66,9 @@ just flash-env superbird-bsp-image    # ~2s vs 30-60s for a full reflash
 ## Talk to the device
 
 Over USB-CDC-NCM, the device shows up on mDNS as `<hostname>.local`.
-The BSP image defaults to `superbird.local`; bridgething's images
-default to `bridgething.local`. Multi-device hosts append a short
-serial suffix.
+The BSP image defaults to `superbird.local`; the kiosk example
+defaults to `superbird-kiosk.local`; bridgething's images default to
+`bridgething.local`. Multi-device hosts append a short serial suffix.
 
 ```bash
 just ssh                      # interactive shell
@@ -115,9 +116,9 @@ in `meta-superbird/recipes-support/swupdate/`.
 
 ## Layer layout
 
-- `meta-superbird/` is the BSP: kernel, DTS, mainline u-boot, partition geometry, baseline systemd units, USB gadget, bluetooth. See `meta-superbird/README.md`.
+- `meta-superbird/` is the BSP: kernel, DTS, mainline u-boot, partition geometry, baseline systemd units, USB gadget, bluetooth, `superbird-init`, `packagegroup-superbird-runtime`, the `superbird-image` and `bandaid-image` bbclasses. See `meta-superbird/README.md`.
 - `meta-bridgething/` is the bridgething application layer: the daemon, hub and stock webapps, OTA wrappers, prod/dev image recipes. See `meta-bridgething/README.md`.
-- `examples/meta-superbird-kiosk-example/` is the fork-template for a non-bridgething kiosk.
+- `examples/meta-superbird-kiosk-example/` is the fork-template for a non-bridgething kiosk: distro + prod and dev images + bandaid + minimal C daemon + OTA wrappers. See its own README for the fork checklist.
 
 ## Host tools
 
