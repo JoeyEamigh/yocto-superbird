@@ -14,7 +14,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "superbird-provision.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-RDEPENDS:${PN} = "gptfdisk"
+RDEPENDS:${PN} = "gptfdisk util-linux-partx"
 
 do_install() {
     install -d ${D}${libexecdir}

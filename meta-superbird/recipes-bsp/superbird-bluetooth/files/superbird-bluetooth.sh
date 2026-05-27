@@ -25,6 +25,17 @@ TTY="/dev/ttyAML1"
 LOW_HOLD_MS=100
 HIGH_SETTLE_MS=300
 
+# Operational UART baud the chip is driven to AFTER patchram. 115200 is
+# the chip's natural baud immediately after patchram load; without a
+# baud bump every BT transfer is capped at ~11 KB/s (115200/10 minus
+# protocol overhead). The chip's firmware build 0353 supports up to
+# 3 Mbps via vendor HCI_BCM_Update_Baud_Rate (0xFC18). meson_uart's
+# divisor math at uartclk=24 MHz with xtal/3 gives clean integer
+# multipliers at 1/2/4 Mbps; 3 Mbps would land off by 11% at xtal/3 so
+# go straight to 4 Mbps (still inside the patchram's supported range -
+# the radio side becomes the bottleneck around 125 KB/s effective).
+TARGET_BAUD=4000000
+
 # /sys/bus/nvmem cell containing the OEM-stamped public BDADDR. The
 # DTS reg <0x6 0x6> puts this at offset 6 in efuse0; cells/bt-mac@6,0
 # is the canonical kernel-named symlink. 6 raw bytes, MSB-first.
@@ -130,23 +141,57 @@ attach_btattach() {
         return 1
     fi
     # `-S 115200` is load-bearing: hci_ldisc.c sets hu->oper_speed from
-    # tty->termios.c_ospeed at line-discipline attach time. Without -S,
-    # the tty's pre-existing (random) speed becomes oper_speed, and
-    # bcm_setup tries to switch the chip to that nonsense baud - the
-    # chip never ACKs and 0xfc18 times out. Pinning to the same speed
-    # the chip is already at makes the set_baudrate command a no-op
-    # round-trip (chip ACKs without actually retuning).
+    # tty->termios.c_ospeed at line-discipline attach time. Pinning -S to
+    # the chip's natural patchram-load baud (115200) makes bcm_setup's
+    # post-patchram set_baudrate a no-op round-trip and patchram loads
+    # cleanly. We bump the chip ourselves afterwards via FC18 so we
+    # don't have to fight bluez/serdev on baud arbitration.
     #
-    # No `-N` flag: we WANT hardware flow control. Without flow
-    # control, meson-uart's set_termios sets TWO_WIRE_EN (BIT 15),
-    # which makes the controller stop driving RTS automatically. The
-    # GPIOX_15 pin (muxed as uart_a_rts) then floats and the BCM
-    # chip's CTS sees "host not ready" → chip won't TX even Reset
-    # response. With flow control on, TWO_WIRE_EN clears and the
-    # controller drives RTS LOW based on RX FIFO state.
+    # No `-N` flag: we WANT hardware flow control. Without flow control,
+    # meson-uart's set_termios sets TWO_WIRE_EN (BIT 15), the GPIOX_15 RTS
+    # pin floats, and the BCM chip's CTS sees "host not ready" so the
+    # chip won't TX even Reset response.
     log "btattach -P bcm -S 115200 -B ${TTY}"
     btattach -P bcm -S 115200 -B "${TTY}" &
     BTATTACH_PID=$!
+}
+
+# Send vendor HCI_BCM_Update_Baud_Rate (opcode 0xFC18) to drive the chip
+# UART to TARGET_BAUD, then retune the host UART. After this the radio
+# is the bottleneck, not the UART link to the BCM controller. Without
+# this the chip stays at 115200 forever and every transfer caps at the
+# ~11 KB/s UART ceiling.
+bump_baud() {
+    if [ "${TARGET_BAUD}" -eq 115200 ]; then
+        return 0
+    fi
+    local b0 b1 b2 b3 hex0 hex1 hex2 hex3
+    b0=$(( TARGET_BAUD        & 0xff ))
+    b1=$(( (TARGET_BAUD >> 8 ) & 0xff ))
+    b2=$(( (TARGET_BAUD >> 16) & 0xff ))
+    b3=$(( (TARGET_BAUD >> 24) & 0xff ))
+    printf -v hex0 '%02x' "$b0"
+    printf -v hex1 '%02x' "$b1"
+    printf -v hex2 '%02x' "$b2"
+    printf -v hex3 '%02x' "$b3"
+    log "FC18 set chip baud to ${TARGET_BAUD}"
+    if ! hcitool -i hci0 cmd 0x3F 0x018 0x00 0x00 "0x${hex0}" "0x${hex1}" "0x${hex2}" "0x${hex3}" >/dev/null 2>&1; then
+        log "WARN: FC18 baud bump command failed; staying at 115200"
+        return 0
+    fi
+    # The chip retunes its UART before sending the FC18 command-complete
+    # event, so by the time hcitool returns we already missed it. Give it
+    # a beat to settle.
+    sleep 0.1
+    log "stty -> host UART at ${TARGET_BAUD}"
+    if ! stty -F "${TTY}" "${TARGET_BAUD}" cs8 -parenb -cstopb crtscts >/dev/null 2>&1; then
+        log "ERROR: stty failed to set host UART to ${TARGET_BAUD}; chip is at new baud, host is not - link is broken"
+        return 1
+    fi
+    sleep 0.1
+    if ! hciconfig hci0 reset >/dev/null 2>&1; then
+        log "WARN: chip silent after retune to ${TARGET_BAUD}"
+    fi
 }
 
 # Wait for the kernel to expose /sys/class/bluetooth/hci0 AND for the
@@ -228,6 +273,7 @@ main() {
     attach_btattach
     if wait_for_hci0; then
         program_efuse_bdaddr
+        bump_baud
     fi
     # Tell systemd we are READY only after the BDADDR is programmed.
     # bluetooth.service is ordered After this unit (via Before=); with
