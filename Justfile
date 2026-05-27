@@ -2,6 +2,9 @@
 
 default := "bridgething"
 export KAS_CONTAINER_ENGINE := env_var_or_default('KAS_CONTAINER_ENGINE', 'docker')
+# Set YOCTO_BUILD_DIR on macOS (or any case-insensitive FS) to redirect bitbake's
+# TMPDIR onto a case-sensitive volume. Unset on Linux = build/ stays in-workspace.
+export KAS_BUILD_DIR := env_var_or_default('YOCTO_BUILD_DIR', '')
 flashthing := env_var_or_default('FLASHTHING_CLI', 'flashthing-cli')
 
 # --- Build ---
@@ -15,6 +18,9 @@ build target=default:
   #!/usr/bin/env bash
   set -euo pipefail
   args=()
+  if [ -n "${KAS_BUILD_DIR:-}" ]; then
+    mkdir -p "$KAS_BUILD_DIR"
+  fi
   if [ "{{target}}" = "bridgething-local" ]; then
     if [ ! -f kas/bridgething-local.yml ]; then
       echo "kas/bridgething-local.yml missing - copy kas/bridgething-local.example.yml and edit BRIDGETHING_LOCAL" >&2
@@ -27,7 +33,7 @@ build target=default:
     fi
     args+=(--runtime-args "-v $local_dir:$local_dir")
   fi
-  kas-container "${args[@]}" build kas/{{target}}.yml
+  kas-container ${args[@]+"${args[@]}"} build kas/{{target}}.yml
 
 # Drop into a bitbake shell inside the container.
 shell target=default:
