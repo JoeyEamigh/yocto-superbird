@@ -10,7 +10,7 @@ SRC_URI = " \
 "
 S = "${UNPACKDIR}"
 
-RDEPENDS:${PN} = "chromium-ozone-wayland superbird-weston-init"
+RDEPENDS:${PN} = "chromium-ozone-wayland superbird-weston-init noto-color-emoji"
 
 inherit systemd
 
