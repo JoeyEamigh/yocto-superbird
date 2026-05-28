@@ -34,11 +34,8 @@ local_conf_header:
     EXTERNALSRC:pn-bridgething-daemon = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-daemon = "${WORKDIR}/build"
 
-    EXTERNALSRC:pn-bridgething-hub-webapp = "${BRIDGETHING_LOCAL}"
-    EXTERNALSRC_BUILD:pn-bridgething-hub-webapp = "${WORKDIR}/build"
-
-    EXTERNALSRC:pn-bridgething-examples = "${BRIDGETHING_LOCAL}"
-    EXTERNALSRC_BUILD:pn-bridgething-examples = "${WORKDIR}/build"
+    EXTERNALSRC:pn-bridgething-webapps = "${BRIDGETHING_LOCAL}"
+    EXTERNALSRC_BUILD:pn-bridgething-webapps = "${WORKDIR}/build"
 
     EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
@@ -48,12 +45,10 @@ local_conf_header:
     # fetch so a private repo or offline host doesn't block dev iteration; the
     # local file:// entries kept by the recipe still resolve fine.
     SRC_URI:remove:pn-bridgething-daemon = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
-    SRC_URI:remove:pn-bridgething-hub-webapp = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
-    SRC_URI:remove:pn-bridgething-examples = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRC_URI:remove:pn-bridgething-webapps = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
     SRC_URI:remove:pn-bridgething-mfi-proxy = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
     SRCREV:pn-bridgething-daemon = "INVALID"
-    SRCREV:pn-bridgething-hub-webapp = "INVALID"
-    SRCREV:pn-bridgething-examples = "INVALID"
+    SRCREV:pn-bridgething-webapps = "INVALID"
     SRCREV:pn-bridgething-mfi-proxy = "INVALID"
 
     EXTERNALSRC_SYMLINKS = ""

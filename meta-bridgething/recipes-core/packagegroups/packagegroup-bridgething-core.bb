@@ -12,8 +12,7 @@ RDEPENDS:${PN} = " \
     \
     bridgething-daemon \
     bridgething-stock-webapp \
-    bridgething-hub-webapp \
-    bridgething-examples \
+    bridgething-webapps \
     bridgething-ab \
     \
     mesa \

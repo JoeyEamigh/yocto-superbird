@@ -8,13 +8,13 @@ chromium kiosk example, or the bridgething stack.
 
 ## Image variants
 
-| Image | What you get | Use for |
-| --- | --- | --- |
-| `superbird-bsp-image` | kernel, busybox, sshd, USB-CDC gadget | bring-up; starting point for your own userspace |
+| Image                        | What you get                                                       | Use for                                             |
+| ---------------------------- | ------------------------------------------------------------------ | --------------------------------------------------- |
+| `superbird-bsp-image`        | kernel, busybox, sshd, USB-CDC gadget                              | bring-up; starting point for your own userspace     |
 | `superbird-kiosk-prod-image` | ext4 ro rootfs, chromium kiosk, example daemon, placeholder webapp | fork-template for any chromium kiosk (prod variant) |
-| `superbird-kiosk-dev-image` | squashfs-lz4 rootfs, weston desktop + VNC + dev tools | fork-template for any chromium kiosk (dev variant) |
-| `bridgething-prod-image` | ext4 ro rootfs, chromium kiosk, bridgething daemon, OTA | the bridgething project's own production build |
-| `bridgething-dev-image` | squashfs-lz4 rootfs with weston desktop, VNC, dev tools | bridgething iteration |
+| `superbird-kiosk-dev-image`  | squashfs-lz4 rootfs, weston desktop + VNC + dev tools              | fork-template for any chromium kiosk (dev variant)  |
+| `bridgething-prod-image`     | ext4 ro rootfs, chromium kiosk, bridgething daemon, OTA            | the bridgething project's own production build      |
+| `bridgething-dev-image`      | squashfs-lz4 rootfs with weston desktop, VNC, dev tools            | bridgething iteration                               |
 
 All share the same GPT layout (env + boot_a + root_a + boot_b +
 root_b + bandaid + data) and the same OTA pipeline.
@@ -35,6 +35,23 @@ configured in `kas/base.yml`) that primes most of the build for you.
 ```bash
 KAS_CONTAINER_ENGINE=podman just build superbird   # if you don't run docker
 ```
+
+### macOS (Apple Silicon)
+
+The build runs in the same kas container on macOS. Run the one-time
+setup first (needs Homebrew and a running Docker Desktop):
+
+```bash
+just macos-setup    # installs GNU coreutils + creates the Docker build volume
+```
+
+Then `just build <target>` works as above.
+
+- **The build tree lives in a Docker named volume** (`carthing-yocto`). bitbake needs a case-sensitive filesystem and POSIX file locking, neither of which Docker
+  Desktop's virtiofs provides over a bind-mounted host directory.
+
+`just clean-build` wipes the build tree in the volume but keeps ccache;
+`docker volume rm carthing-yocto` removes everything.
 
 Output lands in `build/tmp/deploy/images/superbird/`. Each image
 produces a flashthing zip:
@@ -122,12 +139,12 @@ in `meta-superbird/recipes-support/swupdate/`.
 
 ## Host tools
 
-| Tool | Why |
-| --- | --- |
-| `docker` or `podman` | runs the kas container |
-| [`kas`](https://kas.readthedocs.io/) | invoked through `kas-container` |
-| [`just`](https://github.com/casey/just) | drives the recipes in the `Justfile` |
-| [`flashthing-cli`](https://crates.io/crates/flashthing-cli) | host-side burn-mode flasher |
+| Tool                                                        | Why                                  |
+| ----------------------------------------------------------- | ------------------------------------ |
+| `docker` or `podman`                                        | runs the kas container               |
+| [`kas`](https://kas.readthedocs.io/)                        | invoked through `kas-container`      |
+| [`just`](https://github.com/casey/just)                     | drives the recipes in the `Justfile` |
+| [`flashthing-cli`](https://crates.io/crates/flashthing-cli) | host-side burn-mode flasher          |
 
 For device interaction you'll also want `ssh`, `avahi-daemon` (mDNS),
 and on Linux your user in the `dialout` (Debian/Ubuntu) or `uucp` (Arch)

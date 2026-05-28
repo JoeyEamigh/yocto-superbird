@@ -1,0 +1,18 @@
+# OPT-IN memory-bounded build knobs. NOT applied by default - full parallelism
+# builds fine on the pumped 48 GB Docker VM. Enable on a RAM-starved host with:
+#
+#     YOCTO_LOWMEM=1 just build <target>
+#
+# which makes the Justfile layer this over the build config
+# (`kas build <target>.yml:kas/macos-lowmem.yml`). Caps the number of concurrent
+# recipes and the per-recipe make jobs so chromium/nodejs/v8 don't spawn enough
+# concurrent C++ compilers to exhaust a small Docker VM. BB_NUMBER_THREADS and
+# PARALLEL_MAKE are in bitbake's hash-ignore list, so this never invalidates
+# sstate and is safe to toggle between builds.
+header:
+  version: 18
+
+local_conf_header:
+  lowmem: |
+    BB_NUMBER_THREADS = "6"
+    PARALLEL_MAKE = "-j 6"
