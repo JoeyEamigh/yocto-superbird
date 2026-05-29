@@ -11,8 +11,7 @@ RequiresMountsFor=/lib/firmware
 Type=notify
 NotifyAccess=all
 ExecStart=/usr/bin/superbird-bluetooth
-# force bluetoothd to re-read mgmt cache after our BDADDR write
-ExecStartPost=/bin/systemctl try-restart bluetooth.service
+ExecStartPost=/bin/systemctl --no-block try-restart bluetooth.service
 Restart=on-failure
 RestartSec=2
 # cgroup cleanup so daemonized gpioset workers release REG_ON / DEV_WAKE

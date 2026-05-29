@@ -41,12 +41,18 @@ TARGET_BAUD=4000000
 # is the canonical kernel-named symlink. 6 raw bytes, MSB-first.
 BT_MAC_CELL_GLOB="/sys/bus/nvmem/devices/efuse0/cells/bt-mac@*"
 
-# How long we'll wait for the kernel to expose hci0 after btattach
-# triggers the BCM patchram load AND for it to leave INIT state.
-# bcm_setup() runs the full patchram + baudrate dance synchronously
-# in the kernel and that can take >5s on a cold boot, so we give it
-# 30s of margin before giving up on programming the BDADDR.
-HCI_WAIT_SECONDS=30
+# the chip can wedge during cold or loaded bring-up: the first HCI_Reset
+# races with chip readiness and the controller goes silent, ACKing nothing.
+# a wedged chip is ONLY recovered by a fresh REG_ON power-cycle - retrying
+# hciconfig up on the same attach never unsticks it. so each bring-up
+# attempt re-pulses REG_ON and re-attaches, and we try a few times before
+# leaning on systemd's restart. a healthy attempt reaches UP in ~6s
+# (patchram load); a wedged one is detected in ~10s (one HCI_Reset timeout).
+BRINGUP_ATTEMPTS=6
+# per-attempt seconds to wait for hci0 to reach UP. covers the ~6s healthy
+# patchram path plus margin; a wedged attempt burns ~10s here on the kernel
+# HCI_Reset timeout, then we re-pulse.
+UP_WAIT_SECONDS=14
 
 log() { printf '[superbird-bluetooth] %s\n' "$*"; }
 
@@ -188,38 +194,43 @@ bump_baud() {
         log "ERROR: stty failed to set host UART to ${TARGET_BAUD}; chip is at new baud, host is not - link is broken"
         return 1
     fi
-    sleep 0.1
-    if ! hciconfig hci0 reset >/dev/null 2>&1; then
-        log "WARN: chip silent after retune to ${TARGET_BAUD}"
-    fi
-}
-
-# Wait for the kernel to expose /sys/class/bluetooth/hci0 AND for the
-# adapter to leave INIT and reach the UP state. hcitool/HCI commands
-# error out with "Network is down" while the adapter is still INIT,
-# so we explicitly bring it UP and confirm the kernel mark before
-# issuing the BDADDR write.
-wait_for_hci0() {
+    # the chip emits FC18's command-complete at the new baud while the host is
+    # still at the old one, so those bytes land as garbage in the host RX path
+    # and desync the HCI line discipline. an HCI command issued straight into
+    # that garbage fails; a down then up retry re-syncs the ldisc at the new
+    # baud. the chip itself stays healthy at TARGET_BAUD throughout.
+    hciconfig hci0 down >/dev/null 2>&1 || true
+    sleep 0.3
     local i
-    for i in $(seq 1 $((HCI_WAIT_SECONDS * 10))); do
-        if [ -e /sys/class/bluetooth/hci0 ]; then
-            break
-        fi
-        sleep 0.1
-    done
-    if [ ! -e /sys/class/bluetooth/hci0 ]; then
-        log "ERROR: hci0 did not appear within ${HCI_WAIT_SECONDS}s"
-        return 1
-    fi
-    hciconfig hci0 up >/dev/null 2>&1 || true
-    for i in $(seq 1 $((HCI_WAIT_SECONDS * 10))); do
-        if hciconfig hci0 | grep -qw UP; then
+    for i in $(seq 1 10); do
+        if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
+            log "host + chip resynced at ${TARGET_BAUD}"
             return 0
         fi
-        hciconfig hci0 up >/dev/null 2>&1 || true
+        sleep 0.3
+    done
+    log "ERROR: hci0 did not return to UP at ${TARGET_BAUD} after retune"
+    return 1
+}
+
+# Wait for the just-attached controller to reach UP for a single bring-up
+# attempt. hci0 appears within ~1s of btattach; bringing it UP runs the
+# kernel's bcm_setup (patchram + reset) synchronously, so hciconfig up
+# blocks ~6s on a healthy chip or ~10s on a wedged one (HCI_Reset timeout).
+# returns non-zero on a wedged attempt so the caller can re-pulse.
+wait_for_up() {
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -e /sys/class/bluetooth/hci0 ] && break
         sleep 0.1
     done
-    log "ERROR: hci0 did not reach UP within ${HCI_WAIT_SECONDS}s"
+    [ -e /sys/class/bluetooth/hci0 ] || return 1
+    for i in $(seq 1 "${UP_WAIT_SECONDS}"); do
+        if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
+            return 0
+        fi
+        sleep 1
+    done
     return 1
 }
 
@@ -269,11 +280,29 @@ main() {
         log "hci0 already exists; bringing DOWN to clear stale state"
         hciconfig hci0 down >/dev/null 2>&1 || true
     fi
-    pulse_chip_enable
-    attach_btattach
-    if wait_for_hci0; then
+    local attempt=0 up=0
+    while [ "${attempt}" -lt "${BRINGUP_ATTEMPTS}" ]; do
+        attempt=$(( attempt + 1 ))
+        # release_gpios kills the prior attempt's btattach + daemonized
+        # gpiosets so pulse_chip_enable can re-acquire REG_ON / DEV_WAKE;
+        # libgpiod refuses a second request on a held line.
+        if [ "${attempt}" -gt 1 ]; then
+            release_gpios
+        fi
+        pulse_chip_enable
+        attach_btattach
+        if wait_for_up; then
+            log "hci0 UP on attempt ${attempt}"
+            up=1
+            break
+        fi
+        log "attempt ${attempt}: chip silent; re-pulsing REG_ON to unwedge"
+    done
+    if [ "${up}" -eq 1 ]; then
         program_efuse_bdaddr
         bump_baud
+    else
+        log "ERROR: hci0 never reached UP after ${BRINGUP_ATTEMPTS} attempts"
     fi
     # Tell systemd we are READY only after the BDADDR is programmed.
     # bluetooth.service is ordered After this unit (via Before=); with
