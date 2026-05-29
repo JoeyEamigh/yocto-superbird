@@ -22,7 +22,7 @@ DEV_WAKE_LINE=72          # GPIOX_7, BT_DEV_WAKE - keeps chip out of deep sleep
 TTY="/dev/ttyAML1"
 # Match stock timing exactly: 100 ms REG_ON LOW
 # hold, 300 ms HIGH settle. Total ~400 ms.
-LOW_HOLD_MS=100
+LOW_HOLD_MS=250
 HIGH_SETTLE_MS=300
 
 # Operational UART baud the chip is driven to AFTER patchram. 115200 is
