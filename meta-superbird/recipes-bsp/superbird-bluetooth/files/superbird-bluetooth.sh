@@ -1,319 +1,287 @@
 #!/bin/sh
-# Bring up the Superbird's BCM20703A2 over UART_A (= /dev/ttyAML1).
+# Bring up the Superbird's BCM20703A2 over UART_A (= /dev/ttyAML1) at 4 Mbps.
 #
-# The chip's REG_ON pin is on GPIOX_17 - it must be pulsed LOW->HIGH at
-# init to bring the chip out of its hardware-reset state. The mainline
-# hci_bcm serdev driver does this automatically via shutdown-gpios but
-# hits a Reset->ReadLocalVersion timeout we couldn't diagnose; userspace
-# btattach (matching stock) sidesteps the issue.
+# REG_ON (GPIOX_17) is pulsed LOW->HIGH to take the chip out of hardware reset;
+# userspace btattach + the broadcom protocol carry HCI (mainline hci_bcm serdev
+# hits a Reset->ReadLocalVersion timeout we sidestep this way).
+#
+# The service must be FAST and BOUNCE-FREE: under first-boot load the chip comes
+# up but btattach can exit shortly after the baud bump. The old code ended in
+# `wait $BTATTACH_PID`, so btattach's exit became the service's exit -> a spurious
+# restart even though BT was already UP@4M. Instead we bring up to UP@4M, signal
+# readiness ONCE, then SUPERVISE btattach: if it dies we re-bring-up in-script
+# within a budget and never exit non-zero after readiness.
 
-set -eu
+set -u
 
-# Mainline meson-pinctrl exposes gpiochip lines without names, so we
-# can't use `gpioset GPIOX_17=...` directly. The bank order in
-# pinctrl-meson-g12a.c is GPIOZ -> GPIOH -> BOOT -> GPIOC -> GPIOA ->
-# GPIOX, and the cumulative offsets put GPIOA_0 at line 49 (verified
-# via gpioinfo: "Preset 1" sits there) and GPIOX_0 at line 65 (49+16).
-# That makes GPIOX_17 = line 82 - same offset nixos-superbird uses
-# (`gpioset 0 82=1` in their bluetooth-adapter service).
 GPIO_CHIP=0
 REG_ON_LINE=82            # GPIOX_17, chip enable / REG_ON
-DEV_WAKE_LINE=72          # GPIOX_7, BT_DEV_WAKE - keeps chip out of deep sleep
+DEV_WAKE_LINE=72          # GPIOX_7, BT_DEV_WAKE - keeps the chip out of deep sleep
 TTY="/dev/ttyAML1"
-# Match stock timing exactly: 100 ms REG_ON LOW
-# hold, 300 ms HIGH settle. Total ~400 ms.
-LOW_HOLD_MS=100
+LOW_HOLD_MS=100           # matches nixos-superbird stock 4.9 timing
 HIGH_SETTLE_MS=300
 
-# Operational UART baud the chip is driven to AFTER patchram. 115200 is
-# the chip's natural baud immediately after patchram load; without a
-# baud bump every BT transfer is capped at ~11 KB/s (115200/10 minus
-# protocol overhead). The chip's firmware build 0353 supports up to
-# 3 Mbps via vendor HCI_BCM_Update_Baud_Rate (0xFC18). meson_uart's
-# divisor math at uartclk=24 MHz with xtal/3 gives clean integer
-# multipliers at 1/2/4 Mbps; 3 Mbps would land off by 11% at xtal/3 so
-# go straight to 4 Mbps (still inside the patchram's supported range -
-# the radio side becomes the bottleneck around 125 KB/s effective).
+# 4 Mbps lands on an exact meson_uart divisor at xtal/3; 115200 caps every BT
+# transfer near ~11 KB/s, which is unusable (single album art ~22s). The radio
+# (3-DH5 EDR) is the bottleneck above ~125 KB/s once the UART link is at 4M.
 TARGET_BAUD=4000000
 
-# /sys/bus/nvmem cell containing the OEM-stamped public BDADDR. The
-# DTS reg <0x6 0x6> puts this at offset 6 in efuse0; cells/bt-mac@6,0
-# is the canonical kernel-named symlink. 6 raw bytes, MSB-first.
+# OEM-stamped public BDADDR cell. iAP2 IdentificationInformation carries this MAC
+# and the iPhone rejects identification if it does not match the bonded address.
 BT_MAC_CELL_GLOB="/sys/bus/nvmem/devices/efuse0/cells/bt-mac@*"
 
-# the chip can wedge during cold or loaded bring-up: the first HCI_Reset
-# races with chip readiness and the controller goes silent, ACKing nothing.
-# a wedged chip is ONLY recovered by a fresh REG_ON power-cycle - retrying
-# hciconfig up on the same attach never unsticks it. so each bring-up
-# attempt re-pulses REG_ON and re-attaches, and we try a few times before
-# leaning on systemd's restart. a healthy attempt reaches UP in ~6s
-# (patchram load); a wedged one is detected in ~10s (one HCI_Reset timeout).
-BRINGUP_ATTEMPTS=6
-# per-attempt seconds to wait for hci0 to reach UP. covers the ~6s healthy
-# patchram path plus margin; a wedged attempt burns ~10s here on the kernel
-# HCI_Reset timeout, then we re-pulse.
-UP_WAIT_SECONDS=14
+# Wall-clock budget to first UP@4M. The .service TimeoutStartSec must be larger so
+# systemd doesn't kill the start before we exhaust this.
+BRINGUP_BUDGET_S=40
+# Per-attempt cap on the synchronous hciconfig-up patchram window before we give
+# up on this attempt and re-pulse. Healthy is ~6s; a struggling open is longer.
+UP_WAIT_S=14
+
+BTATTACH_PID=""
 
 log() { printf '[superbird-bluetooth] %s\n' "$*"; }
+now() { date +%s; }
 
-# Kill any daemonized gpioset/btattach processes from a previous run
-# that may still hold our lines or the tty. Aggressive - kills all
-# gpiosets on the system. The only producers of `gpioset` on this
-# image are this script and ad-hoc use during diags; safe to
-# nuke broadly during BT bringup.
-release_gpios() {
-    for pid in $(pidof gpioset 2>/dev/null); do
-        kill -9 "${pid}" 2>/dev/null || true
-    done
-    for pid in $(pidof btattach 2>/dev/null); do
-        kill -9 "${pid}" 2>/dev/null || true
-    done
-    # Wait long enough for the kernel to actually close the file
-    # descriptors and release the underlying gpiod_request - empirically
-    # 0.1s isn't always enough on this device, 0.5s is reliable.
-    sleep 0.5
+line_state() { grep -E "^ gpio-$1 " /sys/kernel/debug/gpio 2>/dev/null; }
+reg_is_high() { line_state "$REG_ON_LINE" | grep -q 'hi'; }
+
+# Kill every gpioset/btattach so a fresh pulse can re-acquire the lines. libgpiod
+# refuses a second request on a held line, and selectively matching a holder by
+# cmdline is fragile, so we release everything and re-establish from scratch.
+kill_all() {
+    for pid in $(pidof gpioset 2>/dev/null); do kill -9 "${pid}" 2>/dev/null || true; done
+    for pid in $(pidof btattach 2>/dev/null); do kill -9 "${pid}" 2>/dev/null || true; done
+    BTATTACH_PID=""
 }
 
-# Two persistent gpioset processes:
-#  1. REG_ON (GPIOX_17, line 82): pulse LOW->HIGH to power-cycle chip RAM.
-#     daemonize keeps the line driven HIGH after the LOW pulse so REG_ON
-#     stays asserted for the chip's lifetime.
-#  2. BT_DEV_WAKE (GPIOX_7, line 72): hold LOW persistently. BCM chips
-#     drop into deep sleep between HCI commands when DEV_WAKE is
-#     deasserted; the chip ACKs HCI_Reset's Command_Complete then goes
-#     silent for every subsequent command. Asserting DEV_WAKE LOW
-#     (active-low wake) fixes that. Mainline hci_bcm.c does this via
-#     gpiod_get + gpiod_set_value(true) on the device-wakeup-gpios
-#     property; without serdev we own the GPIO.
+# Poll debugfs until both BT lines are unclaimed (a released line vanishes from
+# the dump) so a re-acquire won't hit "Device or resource busy".
+wait_lines_released() {
+    i=0
+    while [ "${i}" -lt 20 ]; do
+        if [ -z "$(line_state "${REG_ON_LINE}")" ] && [ -z "$(line_state "${DEV_WAKE_LINE}")" ]; then
+            return 0
+        fi
+        sleep 0.1
+        i=$(( i + 1 ))
+    done
+    return 1
+}
+
+# Hold a line at a value via a daemonized gpioset, retrying while the line is
+# still busy (a just-killed holder's fd not yet closed by the kernel).
+gpio_hold() {
+    _ln="$1"; _v="$2"; _try=0
+    while [ "${_try}" -lt 30 ]; do
+        if gpioset -c "${GPIO_CHIP}" --daemonize "${_ln}=${_v}" 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.1
+        _try=$(( _try + 1 ))
+    done
+    return 1
+}
+
 ms_to_s() {
-    local ms="$1" s rem
-    s=$(( ms / 1000 ))
-    rem=$(( ms % 1000 ))
-    printf '%d.%03d' "${s}" "${rem}"
+    _ms="$1"
+    printf '%d.%03d' "$(( _ms / 1000 ))" "$(( _ms % 1000 ))"
 }
 
+# Clean power-cycle: release all -> drive DEV_WAKE+REG_ON low -> hold -> release
+# all -> drive DEV_WAKE+REG_ON high. Returns non-zero if REG_ON does not end up
+# actually driven high (so the caller treats it as a failed attempt, not a wedge).
 pulse_chip_enable() {
-    # Two daemonized gpioset processes for DEV_WAKE - assert LOW and
-    # leave running for the lifetime of the service.
-    log "asserting DEV_WAKE (chip${GPIO_CHIP} line ${DEV_WAKE_LINE}=GPIOX_7) LOW (active-low wake)"
-    gpioset -c "${GPIO_CHIP}" --daemonize "${DEV_WAKE_LINE}=0"
-
-    # Drive REG_ON LOW to fully reset the chip - daemonize so the line
-    # stays driven through the hold period. Then kill that gpioset and
-    # bring REG_ON HIGH with a fresh daemonize. (--toggle <interval>
-    # in libgpiod 2.x actually toggles repeatedly at the interval, not
-    # "go LOW then go HIGH once" - so we don't use it here.)
-    log "REG_ON LOW for ${LOW_HOLD_MS}ms (full chip reset)"
-    gpioset -c "${GPIO_CHIP}" --daemonize "${REG_ON_LINE}=0"
+    kill_all
+    wait_lines_released
+    log "asserting DEV_WAKE (line ${DEV_WAKE_LINE}) LOW, REG_ON (line ${REG_ON_LINE}) LOW for ${LOW_HOLD_MS}ms"
+    gpio_hold "${DEV_WAKE_LINE}" 0 || { log "pulse: DEV_WAKE acquire busy"; return 1; }
+    gpio_hold "${REG_ON_LINE}" 0  || { log "pulse: REG_ON-low acquire busy"; return 1; }
     sleep "$(ms_to_s "${LOW_HOLD_MS}")"
 
-    # Kill ONLY the REG_ON-holding gpiosets. Identify by reading
-    # /proc/<pid>/cmdline (null-separated argv): the cmdline of the
-    # REG_ON-LOW gpioset contains the literal token "82=0". DEV_WAKE
-    # contains "72=0", so checking for "82=0" specifically is safe.
-    # libgpiod 2.x's gpioset takes "<line> <value>" as separate args
-    # (not "line=value"). Find and kill the daemonized gpioset that's
-    # holding REG_ON LOW so we can re-acquire the line for HIGH.
-    for pid in $(pidof gpioset 2>/dev/null); do
-        if [ -r "/proc/${pid}/cmdline" ]; then
-            cmd=$(tr '\0' ' ' < "/proc/${pid}/cmdline")
-            case "${cmd}" in
-                *" ${REG_ON_LINE} 0 "*|*" ${REG_ON_LINE}=0 "*)
-                    kill -9 "${pid}" 2>/dev/null || true
-                    ;;
-            esac
-        fi
-    done
-
-    # Wait for kernel to release the gpio line, then poll
-    # /sys/kernel/debug/gpio to confirm the line is free before
-    # attempting to re-acquire it.
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        sleep 0.2
-        if ! grep -qE "^ gpio-${REG_ON_LINE} " /sys/kernel/debug/gpio 2>/dev/null; then
-            log "REG_ON line released after ${i} polls"
-            break
-        fi
-    done
-
-    log "REG_ON HIGH (chip power-up); waiting ${HIGH_SETTLE_MS}ms for ROM init"
-    gpioset -c "${GPIO_CHIP}" --daemonize "${REG_ON_LINE}=1"
+    kill_all
+    wait_lines_released || { log "pulse: lines stuck held"; return 1; }
+    gpio_hold "${DEV_WAKE_LINE}" 0 || { log "pulse: DEV_WAKE reacquire busy"; return 1; }
+    gpio_hold "${REG_ON_LINE}" 1  || { log "pulse: REG_ON-high acquire busy"; return 1; }
     sleep "$(ms_to_s "${HIGH_SETTLE_MS}")"
+
+    if ! reg_is_high; then
+        log "pulse: REG_ON not high after set"
+        return 1
+    fi
+    log "REG_ON HIGH (chip powered)"
+    return 0
 }
 
+# `-S 115200` pins the ldisc oper_speed to the chip's natural post-patchram baud
+# so hci_bcm's set_baudrate is a no-op round-trip; we bump to 4M ourselves after.
+# No `-N`: we want hardware flow control (without it meson_uart parks RTS via
+# TWO_WIRE_EN and the chip never sees CTS ready).
 attach_btattach() {
     if [ ! -c "${TTY}" ]; then
         log "ERROR: ${TTY} not found - check serial1 alias in DTS"
         return 1
     fi
-    # `-S 115200` is load-bearing: hci_ldisc.c sets hu->oper_speed from
-    # tty->termios.c_ospeed at line-discipline attach time. Pinning -S to
-    # the chip's natural patchram-load baud (115200) makes bcm_setup's
-    # post-patchram set_baudrate a no-op round-trip and patchram loads
-    # cleanly. We bump the chip ourselves afterwards via FC18 so we
-    # don't have to fight bluez/serdev on baud arbitration.
-    #
-    # No `-N` flag: we WANT hardware flow control. Without flow control,
-    # meson-uart's set_termios sets TWO_WIRE_EN (BIT 15), the GPIOX_15 RTS
-    # pin floats, and the BCM chip's CTS sees "host not ready" so the
-    # chip won't TX even Reset response.
     log "btattach -P bcm -S 115200 -B ${TTY}"
     btattach -P bcm -S 115200 -B "${TTY}" &
     BTATTACH_PID=$!
+    return 0
 }
 
-# Send vendor HCI_BCM_Update_Baud_Rate (opcode 0xFC18) to drive the chip
-# UART to TARGET_BAUD, then retune the host UART. After this the radio
-# is the bottleneck, not the UART link to the BCM controller. Without
-# this the chip stays at 115200 forever and every transfer caps at the
-# ~11 KB/s UART ceiling.
+btattach_alive() {
+    [ -n "${BTATTACH_PID}" ] && kill -0 "${BTATTACH_PID}" 2>/dev/null
+}
+
+# Bring hci0 UP for this attempt. `hciconfig up` runs the kernel bcm_setup
+# (patchram + reset) synchronously; healthy ~6s. Returns non-zero so the caller
+# re-pulses on a silent chip rather than banging on the same attach.
+wait_up() {
+    i=0
+    while [ "${i}" -lt 12 ]; do
+        [ -e /sys/class/bluetooth/hci0 ] && break
+        sleep 0.1
+        i=$(( i + 1 ))
+    done
+    [ -e /sys/class/bluetooth/hci0 ] || { log "wait_up: hci0 never appeared"; return 1; }
+    i=0
+    while [ "${i}" -lt "${UP_WAIT_S}" ]; do
+        if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
+            return 0
+        fi
+        btattach_alive || { log "wait_up: btattach exited during bring-up"; return 1; }
+        sleep 1
+        i=$(( i + 1 ))
+    done
+    log "wait_up: hci0 did not reach UP"
+    return 1
+}
+
+# Write the OEM-stamped public BDADDR and reset so it latches. Best-effort: a
+# failure here does not fail the attempt (the chip still works with its patchram
+# default; only iAP2 MAC cross-check cares, and bring-up correctness comes first).
+program_efuse_bdaddr() {
+    cell=$(ls ${BT_MAC_CELL_GLOB} 2>/dev/null | head -n 1)
+    if [ -z "${cell}" ] || [ ! -r "${cell}" ]; then
+        log "WARN: efuse bt-mac cell absent; keeping patchram default BDADDR"
+        return 0
+    fi
+    mac_be=$(hexdump -e '5/1 "%02X:" 1/1 "%02X"' "${cell}")
+    hex_le=$(hexdump -e '6/1 "%02X "' "${cell}" \
+        | awk '{ for (i=NF; i>0; i--) printf "%s%s", $i, (i==1 ? "" : " ") }')
+    log "writing efused BDADDR ${mac_be} (FC01)"
+    if ! hcitool -i hci0 cmd 0x3F 0x001 ${hex_le} >/dev/null 2>&1; then
+        log "WARN: HCI_BCM_Write_BDADDR failed; keeping current BDADDR"
+        return 0
+    fi
+    hciconfig hci0 reset >/dev/null 2>&1 || log "WARN: reset after BDADDR write failed"
+    return 0
+}
+
+# Bump the chip + host UART to TARGET_BAUD. The chip retunes before emitting
+# FC18's command-complete, so those bytes land at the wrong baud and desync the
+# ldisc; a down/up re-syncs it at the new baud. Returns non-zero (so the attempt
+# re-pulses to a clean 115200 state) if the link does not come back responsive.
 bump_baud() {
     if [ "${TARGET_BAUD}" -eq 115200 ]; then
         return 0
     fi
-    local b0 b1 b2 b3 hex0 hex1 hex2 hex3
-    b0=$(( TARGET_BAUD        & 0xff ))
+    b0=$(( TARGET_BAUD & 0xff ))
     b1=$(( (TARGET_BAUD >> 8 ) & 0xff ))
     b2=$(( (TARGET_BAUD >> 16) & 0xff ))
     b3=$(( (TARGET_BAUD >> 24) & 0xff ))
-    printf -v hex0 '%02x' "$b0"
-    printf -v hex1 '%02x' "$b1"
-    printf -v hex2 '%02x' "$b2"
-    printf -v hex3 '%02x' "$b3"
-    log "FC18 set chip baud to ${TARGET_BAUD}"
-    if ! hcitool -i hci0 cmd 0x3F 0x018 0x00 0x00 "0x${hex0}" "0x${hex1}" "0x${hex2}" "0x${hex3}" >/dev/null 2>&1; then
-        log "WARN: FC18 baud bump command failed; staying at 115200"
-        return 0
-    fi
-    # The chip retunes its UART before sending the FC18 command-complete
-    # event, so by the time hcitool returns we already missed it. Give it
-    # a beat to settle.
-    sleep 0.1
-    log "stty -> host UART at ${TARGET_BAUD}"
-    if ! stty -F "${TTY}" "${TARGET_BAUD}" cs8 -parenb -cstopb crtscts >/dev/null 2>&1; then
-        log "ERROR: stty failed to set host UART to ${TARGET_BAUD}; chip is at new baud, host is not - link is broken"
+    h0=$(printf '%02x' "${b0}"); h1=$(printf '%02x' "${b1}")
+    h2=$(printf '%02x' "${b2}"); h3=$(printf '%02x' "${b3}")
+    log "FC18 chip baud -> ${TARGET_BAUD}"
+    if ! hcitool -i hci0 cmd 0x3F 0x018 0x00 0x00 "0x${h0}" "0x${h1}" "0x${h2}" "0x${h3}" >/dev/null 2>&1; then
+        log "bump_baud: FC18 command failed"
         return 1
     fi
-    # the chip emits FC18's command-complete at the new baud while the host is
-    # still at the old one, so those bytes land as garbage in the host RX path
-    # and desync the HCI line discipline. an HCI command issued straight into
-    # that garbage fails; a down then up retry re-syncs the ldisc at the new
-    # baud. the chip itself stays healthy at TARGET_BAUD throughout.
+    sleep 0.1
+    if ! stty -F "${TTY}" "${TARGET_BAUD}" cs8 -parenb -cstopb crtscts >/dev/null 2>&1; then
+        log "bump_baud: stty to ${TARGET_BAUD} failed"
+        return 1
+    fi
     hciconfig hci0 down >/dev/null 2>&1 || true
     sleep 0.3
-    local i
-    for i in $(seq 1 10); do
+    i=0
+    while [ "${i}" -lt 6 ]; do
         if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
-            log "host + chip resynced at ${TARGET_BAUD}"
-            return 0
+            # confirm the chip actually answers at the new baud, not just that the
+            # ldisc reports UP - one HCI read must complete.
+            if hcitool -i hci0 cmd 0x04 0x0001 >/dev/null 2>&1; then
+                log "UP@${TARGET_BAUD} (responsive)"
+                return 0
+            fi
         fi
+        btattach_alive || { log "bump_baud: btattach exited during resync"; return 1; }
         sleep 0.3
+        i=$(( i + 1 ))
     done
-    log "ERROR: hci0 did not return to UP at ${TARGET_BAUD} after retune"
+    log "bump_baud: link not responsive at ${TARGET_BAUD}"
     return 1
 }
 
-# Wait for the just-attached controller to reach UP for a single bring-up
-# attempt. hci0 appears within ~1s of btattach; bringing it UP runs the
-# kernel's bcm_setup (patchram + reset) synchronously, so hciconfig up
-# blocks ~6s on a healthy chip or ~10s on a wedged one (HCI_Reset timeout).
-# returns non-zero on a wedged attempt so the caller can re-pulse.
-wait_for_up() {
-    local i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        [ -e /sys/class/bluetooth/hci0 ] && break
-        sleep 0.1
-    done
-    [ -e /sys/class/bluetooth/hci0 ] || return 1
-    for i in $(seq 1 "${UP_WAIT_SECONDS}"); do
-        if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
+# One full bring-up attempt. On success btattach is running and hci0 is UP@4M and
+# responsive. On any failure returns non-zero; the next attempt's pulse kills the
+# leftover btattach and starts clean.
+attempt() {
+    pulse_chip_enable || return 1
+    attach_btattach    || return 1
+    wait_up            || return 1
+    program_efuse_bdaddr
+    bump_baud          || return 1
+    return 0
+}
+
+bringup_to_ready() {
+    deadline=$(( $(now) + BRINGUP_BUDGET_S ))
+    n=0
+    while [ "$(now)" -lt "${deadline}" ]; do
+        n=$(( n + 1 ))
+        log "bring-up attempt ${n}"
+        if attempt; then
+            log "UP@${TARGET_BAUD} on attempt ${n}"
             return 0
         fi
-        sleep 1
+        log "attempt ${n} failed; re-pulsing"
     done
     return 1
-}
-
-# Write the OEM-stamped public BDADDR into the BCM controller and
-# reset so the new address takes effect. iAP2 IdentificationInformation
-# (param 17, BluetoothTransportComponent) carries this MAC and the
-# iPhone rejects identification if it doesn't match the address it
-# bonded against. Without this step the BCM chip boots with a default
-# / random address chosen by the patchram, which never matches the
-# /etc/superbird btMac field that the device init recipe seeds from the same
-# nvmem cell.
-program_efuse_bdaddr() {
-    local cell mac_be hex_le
-    cell=$(ls ${BT_MAC_CELL_GLOB} 2>/dev/null | head -n 1)
-    if [ -z "${cell}" ] || [ ! -r "${cell}" ]; then
-        log "WARN: efuse bt-mac cell not present; controller keeps patchram default BDADDR"
-        return 0
-    fi
-    # 6 raw bytes MSB-first in the cell (matches what hexdump prints
-    # in superbird-init.sh). Print as colon-separated for the log line
-    # and as space-separated little-endian for hcitool.
-    mac_be=$(hexdump -e '5/1 "%02X:" 1/1 "%02X"' "${cell}")
-    hex_le=$(hexdump -e '6/1 "%02X "' "${cell}" \
-        | awk '{ for (i=NF; i>0; i--) printf "%s%s", $i, (i==1 ? "" : " ") }')
-    log "writing efused BDADDR ${mac_be} via HCI_BCM_Write_BDADDR (0xFC01)"
-    if ! hcitool -i hci0 cmd 0x3F 0x001 ${hex_le} >/dev/null; then
-        log "WARN: HCI_BCM_Write_BDADDR command failed; controller keeps current BDADDR"
-        return 0
-    fi
-    # The BCM chip latches the new BDADDR on the next HCI_Reset.
-    # `hciconfig hci0 reset` issues HCI_Reset and re-reads local
-    # info, which is what makes bluetoothd see the new address when
-    # the bluetooth.service that follows enumerates the controller.
-    if ! hciconfig hci0 reset >/dev/null; then
-        log "WARN: hciconfig reset failed after BDADDR write"
-    fi
 }
 
 main() {
-    release_gpios
-    # If hci0 already exists from a previous bringup (dev iteration,
-    # service restart), force it DOWN before we power-cycle the chip.
-    # Otherwise the kernel keeps its old BDADDR cache and hciconfig
-    # reports UP RUNNING with stale info while the chip is still
-    # mid-patchram-load.
     if [ -e /sys/class/bluetooth/hci0 ]; then
-        log "hci0 already exists; bringing DOWN to clear stale state"
         hciconfig hci0 down >/dev/null 2>&1 || true
     fi
-    local attempt=0 up=0
-    while [ "${attempt}" -lt "${BRINGUP_ATTEMPTS}" ]; do
-        attempt=$(( attempt + 1 ))
-        # release_gpios kills the prior attempt's btattach + daemonized
-        # gpiosets so pulse_chip_enable can re-acquire REG_ON / DEV_WAKE;
-        # libgpiod refuses a second request on a held line.
-        if [ "${attempt}" -gt 1 ]; then
-            release_gpios
-        fi
-        pulse_chip_enable
-        attach_btattach
-        if wait_for_up; then
-            log "hci0 UP on attempt ${attempt}"
-            up=1
-            break
-        fi
-        log "attempt ${attempt}: chip silent; re-pulsing REG_ON to unwedge"
-    done
-    if [ "${up}" -eq 1 ]; then
-        program_efuse_bdaddr
-        bump_baud
-    else
-        log "ERROR: hci0 never reached UP after ${BRINGUP_ATTEMPTS} attempts"
+
+    if ! bringup_to_ready; then
+        # Could not reach UP@4M within budget. Do NOT signal readiness (readiness
+        # means UP@4M so bluetoothd opens a 4M adapter). Let systemd's
+        # TimeoutStartSec restart us for a fresh try; a genuinely dead chip is the
+        # daemon's "assume adapter dead" backstop, not ours to mask.
+        log "ERROR: no UP@${TARGET_BAUD} within ${BRINGUP_BUDGET_S}s budget"
+        kill_all
+        exit 1
     fi
-    # Tell systemd we are READY only after the BDADDR is programmed.
-    # bluetooth.service is ordered After this unit (via Before=); with
-    # Type=notify it waits for this signal before bluetoothd discovers
-    # hci0, so bluetoothd reads the efused MAC instead of the patchram
-    # default. NOTIFY_SOCKET is unset when this script runs outside
-    # systemd (manual invocation, ssh debugging) - skip silently.
+
     if [ -n "${NOTIFY_SOCKET:-}" ]; then
         systemd-notify --ready
     fi
-    wait "${BTATTACH_PID}"
+
+    # Supervise: btattach must stay attached to hold the ldisc. If it exits
+    # (observed ~1/3 of first boots shortly after the baud bump), re-bring-up
+    # in-script rather than letting the service fail and bounce. Never exit
+    # non-zero after readiness.
+    while :; do
+        if btattach_alive; then
+            wait "${BTATTACH_PID}"
+            ec=$?
+        else
+            ec="gone"
+        fi
+        log "btattach exited (status ${ec}); re-bringing-up to hold the link"
+        if ! bringup_to_ready; then
+            log "WARN: re-bring-up did not reach UP@${TARGET_BAUD}; retrying"
+        fi
+    done
 }
 
 main "$@"

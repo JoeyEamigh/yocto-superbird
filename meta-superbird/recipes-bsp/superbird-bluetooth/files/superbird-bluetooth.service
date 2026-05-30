@@ -14,6 +14,9 @@ ExecStart=/usr/bin/superbird-bluetooth
 ExecStartPost=/bin/systemctl --no-block try-restart bluetooth.service
 Restart=on-failure
 RestartSec=2
+# must exceed the script's bring-up budget so systemd doesn't kill the start
+# mid-retry; only a genuinely failing chip should hit this and restart.
+TimeoutStartSec=50
 # cgroup cleanup so daemonized gpioset workers release REG_ON / DEV_WAKE
 KillMode=control-group
 
