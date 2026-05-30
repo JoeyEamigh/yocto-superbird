@@ -45,12 +45,15 @@ now() { date +%s; }
 line_state() { grep -E "^ gpio-$1 " /sys/kernel/debug/gpio 2>/dev/null; }
 reg_is_high() { line_state "$REG_ON_LINE" | grep -q 'hi'; }
 
-# Kill every gpioset/btattach so a fresh pulse can re-acquire the lines. libgpiod
-# refuses a second request on a held line, and selectively matching a holder by
-# cmdline is fragile, so we release everything and re-establish from scratch.
+# Kill every gpioset/btattach/hciconfig so a fresh pulse can re-acquire the lines
+# and no stray background `hciconfig up` from a fast-abandoned attempt lingers in
+# the kernel. libgpiod refuses a second request on a held line, and selectively
+# matching a holder by cmdline is fragile, so we release everything and
+# re-establish from scratch.
 kill_all() {
     for pid in $(pidof gpioset 2>/dev/null); do kill -9 "${pid}" 2>/dev/null || true; done
     for pid in $(pidof btattach 2>/dev/null); do kill -9 "${pid}" 2>/dev/null || true; done
+    for pid in $(pidof hciconfig 2>/dev/null); do kill -9 "${pid}" 2>/dev/null || true; done
     BTATTACH_PID=""
 }
 
@@ -132,8 +135,13 @@ btattach_alive() {
 }
 
 # Bring hci0 UP for this attempt. `hciconfig up` runs the kernel bcm_setup
-# (patchram + reset) synchronously; healthy ~6s. Returns non-zero so the caller
-# re-pulses on a silent chip rather than banging on the same attach.
+# synchronously (healthy ~6s). A silent chip (browned out under first-boot eMMC
+# load) instead blocks ~47s in btbcm's HCI_Reset retry chain, so we run the up in
+# the background and abandon the attempt the moment the reset-wedge canary appears
+# (~2s); a fresh REG_ON re-pulse recovers a wedged chip where in-place retries do
+# not. The canary keys on the HCI_Reset failure only - the benign post-init -110s
+# (0x0c7a/0x0c52 this firmware does not answer) must NOT trip it. Non-zero return
+# makes the caller re-pulse.
 wait_up() {
     i=0
     while [ "${i}" -lt 12 ]; do
@@ -142,16 +150,29 @@ wait_up() {
         i=$(( i + 1 ))
     done
     [ -e /sys/class/bluetooth/hci0 ] || { log "wait_up: hci0 never appeared"; return 1; }
-    i=0
-    while [ "${i}" -lt "${UP_WAIT_S}" ]; do
-        if hciconfig hci0 up >/dev/null 2>&1 && hciconfig hci0 | grep -qw UP; then
+
+    _dmark=$(dmesg 2>/dev/null | wc -l)
+    hciconfig hci0 up >/dev/null 2>&1 &
+    _up_pid=$!
+    _deadline=$(( $(now) + UP_WAIT_S ))
+    while [ "$(now)" -lt "${_deadline}" ]; do
+        if hciconfig hci0 2>/dev/null | grep -qw UP; then
             return 0
         fi
-        btattach_alive || { log "wait_up: btattach exited during bring-up"; return 1; }
-        sleep 1
-        i=$(( i + 1 ))
+        if ! btattach_alive; then
+            log "wait_up: btattach exited during bring-up"
+            kill "${_up_pid}" 2>/dev/null || true
+            return 1
+        fi
+        if dmesg 2>/dev/null | sed -n "$(( _dmark + 1 )),\$p" | grep -qiE 'Reset failed|0x0c03 tx timeout'; then
+            log "wait_up: chip silent (HCI_Reset wedge); abandoning attempt to re-pulse"
+            kill "${_up_pid}" 2>/dev/null || true
+            return 1
+        fi
+        sleep 0.5
     done
-    log "wait_up: hci0 did not reach UP"
+    log "wait_up: hci0 did not reach UP within ${UP_WAIT_S}s"
+    kill "${_up_pid}" 2>/dev/null || true
     return 1
 }
 
