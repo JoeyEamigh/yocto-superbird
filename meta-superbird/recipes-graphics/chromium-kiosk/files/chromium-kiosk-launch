@@ -218,6 +218,8 @@ exec ./chromium-bin \
     --cast-graphics-width=800 \
     --cast-graphics-height=480 \
     --enable-input \
+    --enable-wayland-ime \
+    --wayland-text-input-version=1 \
     --disk-cache-size=52428800 \
     --allow-insecure-localhost \
     --noerrdialogs \

@@ -14,6 +14,8 @@
 #   0009: force ShouldCreatePrimaryPlane true so the root render pass promotes and the
 #         wayland buffer pipeline runs end to end.
 #   0010: enable_touch_input on CastWebViewParams so blink sees hardware touch.
+#   0011: drop InitializeInputMethodForTesting so the real wayland input-method context
+#         loads and focus drives the compositor on-screen keyboard.
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
@@ -37,6 +39,7 @@ SRC_URI:append = " \
     file://0008-cast_shell-no-disable-gpu-early-init.patch \
     file://0009-cast_shell-force-primary-plane-on-ozone.patch \
     file://0010-cast_shell-enable-touch-input-in-CastServiceSimple.patch \
+    file://0011-cast_shell-real-input-method-context-for-osk.patch \
 "
 
 # cast-shell PACKAGECONFIG: build cast_shell instead of chrome + chromedriver. trims the binary

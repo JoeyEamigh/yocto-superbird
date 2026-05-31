@@ -1,0 +1,33 @@
+cast_shell: use the real ozone input-method context so the compositor OSK works
+
+CastWindowManagerAura::Setup unconditionally calls
+ui::InitializeInputMethodForTesting, which installs a
+FakeInputMethodContext into the highest-precedence slot of the linux
+input-method-context factory. That stub returns a null
+VirtualKeyboardController and issues no wayland requests, so the real
+WaylandInputMethodContext that ozone installs at InitializeUI is never
+consulted. The result: focusing a web text field produces zero
+text-input traffic to the compositor and no on-screen keyboard ever
+shows.
+
+Removing the call lets CreateLinuxInputMethodContext fall through to
+the ozone factory and build the real WaylandInputMethodContext. With
+--enable-wayland-ime --wayland-text-input-version=1 on the launcher,
+focus then drives zwp_text_input_v1 activate + show_input_panel, which
+is what makes weston launch its input-panel keyboard. The kiosk has no
+test harness that depended on the fake context.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/graphics/cast_window_manager_aura.cc
++++ b/chromecast/graphics/cast_window_manager_aura.cc
+@@ -182,8 +182,6 @@
+   }
+   DCHECK(display::Screen::Get());
+
+-  ui::InitializeInputMethodForTesting();
+-
+   gfx::Rect host_bounds = GetPrimaryDisplayHostBounds();
+   ui::PlatformWindowInitProperties properties(host_bounds);
