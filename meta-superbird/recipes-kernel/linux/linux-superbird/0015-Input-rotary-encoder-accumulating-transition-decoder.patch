@@ -1,0 +1,97 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Date: Sun, 01 Jun 2026 00:35:00 -0400
+Subject: [PATCH] Input: rotary-encoder - decode by accumulating gray
+ transitions
+
+The Car Thing's mechanical encoder bounces hard: measured 200-600 raw
+gray-code edges per detent on the transition (the gpio_intc glitch
+filter at max only knocks that down ~2.6x). The stock half-period
+state machine latches a direction from the last odd intermediate state
+and reports it on the next even state, with no validation that the
+intermediate was actually traversed - so a bounce that momentarily
+reads the opposite neighbour latches and reports the wrong direction.
+A time-based report debounce on top of it cannot win: slow detents are
+discrete bursts so one report lands per detent, but a fast flick merges
+the detents into one continuous bounce storm where the lockout swallows
+most of them and a reversal still leaks. Measured: ten fast forward
+detents decoded to two forward and one backward event.
+
+Since the board catches every edge of both lines (one gpio_intc
+channel per line+polarity), decode by accumulating signed gray-code
+transitions instead. Each edge advances the state by one position; the
+step direction is (state - last) mod 4 == 1 forward or == 3 backward
+(0 = no move, 2 = a missed edge, both ignored). A detent is two gray
+steps, so emit one event per two net steps in a direction. Contact
+bounce is oscillation between two adjacent states - it accumulates
++1, -1, +1, -1 and nets to zero, never reaching the emit threshold -
+so only genuine monotonic rotation produces events. This is immune to
+bounce magnitude and never throttles a fast spin: ten forward detents
+accumulate twenty net forward steps and emit ten forward events,
+whatever the bounce in between.
+
+This replaces the report-debounce approach; the gpio_intc glitch
+filter (separate patch) stays as a cheap front-line edge-rate cut, but
+correctness no longer depends on it. Only the half-period handler is
+reworked - the board selects it via rotary-encoder,steps-per-period=2,
+and two gray steps per detent is its calibration (ten slow detents
+measured as eleven events under the old decoder).
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Upstream-Status: Pending
+---
+ drivers/input/misc/rotary_encoder.c | 25 +++++++++++++++++++------
+ 1 file changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/input/misc/rotary_encoder.c b/drivers/input/misc/rotary_encoder.c
+--- a/drivers/input/misc/rotary_encoder.c
++++ b/drivers/input/misc/rotary_encoder.c
+@@ -51,6 +51,7 @@
+ 	signed char dir;	/* 1 - clockwise, -1 - CCW */
+ 
+ 	unsigned int last_stable;
++	int accum;
+ };
+ 
+ static unsigned int rotary_encoder_get_state(struct rotary_encoder *encoder)
+@@ -135,19 +136,31 @@
+ static irqreturn_t rotary_encoder_half_period_irq(int irq, void *dev_id)
+ {
+ 	struct rotary_encoder *encoder = dev_id;
+-	unsigned int state;
++	unsigned int state, delta;
+ 
+ 	guard(mutex)(&encoder->access_mutex);
+ 
+ 	state = rotary_encoder_get_state(encoder);
++	delta = (state - encoder->last_stable) & 3;
++	encoder->last_stable = state;
+ 
+-	if (state & 1) {
+-		encoder->dir = ((encoder->last_stable - state + 1) % 4) - 1;
+-	} else {
+-		if (state != encoder->last_stable) {
+-			rotary_encoder_report_event(encoder);
+-			encoder->last_stable = state;
+-		}
++	/* one gray step: 1 forward, 3 back; 0 no move, 2 a missed edge - ignore both */
++	if (delta == 1)
++		encoder->accum++;
++	else if (delta == 3)
++		encoder->accum--;
++	else
++		return IRQ_HANDLED;
++
++	/* a detent is two gray steps; contact bounce oscillates +-1 and nets out below this */
++	if (encoder->accum >= 2) {
++		encoder->accum -= 2;
++		encoder->dir = 1;
++		rotary_encoder_report_event(encoder);
++	} else if (encoder->accum <= -2) {
++		encoder->accum += 2;
++		encoder->dir = -1;
++		rotary_encoder_report_event(encoder);
+ 	}
+ 
+ 	return IRQ_HANDLED;
+-- 
+2.54.0

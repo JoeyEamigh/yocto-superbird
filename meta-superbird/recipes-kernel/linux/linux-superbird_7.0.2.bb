@@ -28,7 +28,7 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0012-pinctrl-meson-add-INPUT_ENABLE-and-bare-DRIVE_STRENGTH.patch \
            file://0013-irqchip-meson-gpio-encode-trigger-type-into-hwirq.patch \
            file://0014-drm-panfrost-drop-noisy-Purging-bytes-shrinker-print.patch \
-           file://0015-Input-rotary-encoder-debounce-reports.patch \
+           file://0015-Input-rotary-encoder-accumulating-transition-decoder.patch \
            file://0016-irqchip-meson-gpio-enable-input-glitch-filter.patch"
 
 inherit kernel
