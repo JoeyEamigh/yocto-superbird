@@ -6,7 +6,7 @@ require recipes-bsp/u-boot/u-boot.inc
 
 PV = "2026.07-rc2+git${SRCPV}"
 
-SRCREV = "fe0f9fd805ae0087d92168a627a72c5a21421f57"
+SRCREV = "b6790f142de988eb3a99469d52064c58fb80359f"
 SRC_URI = "git://github.com/ThingLabsOSS/superbird-uboot.git;protocol=https;branch=master"
 
 DEPENDS += "bc-native dtc-native gnutls-native python3-pyelftools-native"

@@ -5,6 +5,7 @@ set -euo pipefail
 HOST=${SUPERBIRD_HOST:-bridgething.local}
 
 exec ssh \
+    -o AddressFamily=inet \
     -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
     -o GlobalKnownHostsFile=/dev/null \
