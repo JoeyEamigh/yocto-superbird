@@ -1,0 +1,90 @@
+cast_shell: honor the --proxy-server command-line switch
+
+CastNetworkContexts::AddProxyToNetworkContextParams builds the network
+service proxy config from a PrefProxyConfigTrackerImpl whose base
+ProxyConfigService is nullptr, so the only proxy source Cast consults is
+the proxy_config::prefs::kProxy pref. That pref is never registered
+(PrefServiceHelper::RegisterPlatformPrefs is empty on the simple build),
+so the tracker reads CONFIG_UNSET and every egress goes DIRECT. The
+--proxy-server switch is a //chrome-layer switch the network service does
+not parse, so passing it on the cast_shell command line is silently
+ignored and the kiosk browser can never reach the SOCKS proxy.
+
+Layer a ProxyConfigServiceFixed built from --proxy-server underneath the
+pref tracker. CreateTrackingProxyConfigService overlays pref config on the
+base, and with no proxy prefs registered the command-line config wins.
+socks5://host:port parses to a single SOCKS5 proxy for all schemes;
+SOCKS5 implies remote DNS, so the hostname is handed to the proxy. The
+network stack still bypasses localhost via its implicit rules, so the
+local webapp bundle and websocket stay DIRECT.
+
+Upstream-Status: Inappropriate [kiosk-specific use case]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/browser/cast_network_contexts.cc
++++ b/chromecast/browser/cast_network_contexts.cc
+@@ -8,6 +8,7 @@
+ #include <string>
+ #include <utility>
+ 
++#include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/strings/strcat.h"
+ #include "base/time/time.h"
+@@ -25,6 +26,10 @@
+ #include "content/public/browser/storage_partition.h"
+ #include "mojo/public/cpp/bindings/pending_receiver.h"
+ #include "mojo/public/cpp/bindings/pending_remote.h"
++#include "net/proxy_resolution/proxy_config.h"
++#include "net/proxy_resolution/proxy_config_service_fixed.h"
++#include "net/proxy_resolution/proxy_config_with_annotation.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
+ #include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
+ #include "services/network/network_context.h"
+ #include "services/network/public/cpp/cookie_encryption_provider_impl.h"
+@@ -318,12 +323,43 @@ CastNetworkContexts::CreateCookieManagerParams() {
+ void CastNetworkContexts::AddProxyToNetworkContextParams(
+     network::mojom::NetworkContextParams* network_context_params) {
+   if (!proxy_config_service_) {
++    // Cast supplies a nullptr base service, so the command-line --proxy-server
++    // switch (a //chrome-layer switch the network service never parses) is
++    // silently ignored. Layer a fixed config from the switch under the pref
++    // tracker; with no proxy prefs registered the command-line config wins.
++    std::unique_ptr<net::ProxyConfigService> base_service;
++    const base::CommandLine* command_line =
++        base::CommandLine::ForCurrentProcess();
++    if (command_line->HasSwitch("proxy-server")) {
++      net::ProxyConfig proxy_config;
++      proxy_config.proxy_rules().ParseFromString(
++          command_line->GetSwitchValueASCII("proxy-server"));
++      net::NetworkTrafficAnnotationTag traffic_annotation =
++          net::DefineNetworkTrafficAnnotation("cast_cmdline_proxy", R"(
++            semantics {
++              sender: "Cast Shell command-line proxy"
++              description:
++                "Routes Cast Shell browser traffic through the proxy given on "
++                "the command line via --proxy-server. On bridgething this "
++                "tunnels the kiosk browser through the companion phone."
++              trigger: "Presence of the --proxy-server command-line switch."
++              data: "All network traffic from the Cast Shell browser."
++              destination: OTHER
++            }
++            policy {
++              cookies_allowed: NO
++              setting: "Configured by the bridgething system image."
++              policy_exception_justification: "Not implemented."
++            })");
++      base_service = std::make_unique<net::ProxyConfigServiceFixed>(
++          net::ProxyConfigWithAnnotation(proxy_config, traffic_annotation));
++    }
+     pref_proxy_config_tracker_impl_ =
+         std::make_unique<PrefProxyConfigTrackerImpl>(
+             CastBrowserProcess::GetInstance()->pref_service(), nullptr);
+     proxy_config_service_ =
+         pref_proxy_config_tracker_impl_->CreateTrackingProxyConfigService(
+-            nullptr);
++            std::move(base_service));
+     proxy_config_service_->AddObserver(this);
+   }
+ 
