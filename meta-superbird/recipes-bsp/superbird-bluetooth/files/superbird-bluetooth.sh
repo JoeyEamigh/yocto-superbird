@@ -21,10 +21,16 @@ TTY="/dev/ttyAML1"
 LOW_HOLD_MS=100           # matches nixos-superbird stock 4.9 timing
 HIGH_SETTLE_MS=300
 
-# 4 Mbps lands on an exact meson_uart divisor at xtal/3; 115200 caps every BT
-# transfer near ~11 KB/s, which is unusable (single album art ~22s). The radio
-# (3-DH5 EDR) is the bottleneck above ~125 KB/s once the UART link is at 4M.
-TARGET_BAUD=4000000
+# Highest rate this board's BCM<->SoC H4 UART carries cleanly under sustained load.
+# H4 carries no CRC, so UART bit errors do not surface as UART/HCI errors; they reach
+# iAP2 as link-checksum failures and trigger retransmits, so the only symptom is severe
+# slowness on large transfers. 4M is an exact divisor and looks clean but silently flips
+# ~1 byte per 38 KB under load (fine for tiny frames, ~35% loss on 16 KB ones). Do NOT
+# raise without moving to a CRC-protected transport (H5). 2M (~200 KB/s) still clears the
+# 3-DH5 EDR radio's ~125 KB/s ceiling, so it does not cap throughput. 115200 caps every BT
+# transfer near ~11 KB/s (single album art ~22s), so do not lower either. (3M does not
+# resync via the FC18 + stty path - the meson divisor rounds and the chip desyncs.)
+TARGET_BAUD=2000000
 
 # OEM-stamped public BDADDR cell. iAP2 IdentificationInformation carries this MAC
 # and the iPhone rejects identification if it does not match the bonded address.
@@ -241,7 +247,16 @@ bump_baud() {
     return 1
 }
 
-# One full bring-up attempt. On success btattach is running and hci0 is UP@4M and
+# Keep the ACL link in active mode (role-switch only, no sniff/hold/park). Sniff is
+# BT power-save: the link parks between bursts and pays a wake latency on each new one,
+# and btmon shows it flapping constantly under load. This device is bus-powered, so the
+# power saving buys nothing and the latency is pure loss. Re-applied per bring-up because
+# the bump_baud down/up resets adapter link policy.
+set_link_policy() {
+    hciconfig hci0 lp rswitch >/dev/null 2>&1 || log "WARN: could not clear sniff from link policy"
+}
+
+# One full bring-up attempt. On success btattach is running and hci0 is UP@2M and
 # responsive. On any failure returns non-zero; the next attempt's pulse kills the
 # leftover btattach and starts clean.
 attempt() {
@@ -250,6 +265,7 @@ attempt() {
     wait_up            || return 1
     program_efuse_bdaddr
     bump_baud          || return 1
+    set_link_policy
     return 0
 }
 
