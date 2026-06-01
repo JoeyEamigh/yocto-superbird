@@ -9,7 +9,7 @@ LINUX_VERSION_EXTENSION = "-superbird"
 PV = "${LINUX_VERSION}+git${SRCPV}"
 
 # pinned to v7.0.2; flip to AUTOINC against linux-7.0.y to ride point releases
-SRCREV = "a703eaaf8bd68c416d20f907435038f409ace6e4"
+SRCREV = "bff90486aa66dbad83a0777f3c17e34fcf26a3e5"
 SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;branch=linux-7.0.y;name=linux \
            file://superbird.cfg \
            file://superbird-disable.cfg \
