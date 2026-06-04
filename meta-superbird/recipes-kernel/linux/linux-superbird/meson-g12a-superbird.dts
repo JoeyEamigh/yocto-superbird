@@ -537,12 +537,8 @@
 	pinctrl-names = "default";
 	uart-has-rtscts;
 	fifo-size = <128>;
-	/* xtal/3 baud divisor mode (no BAUD_XTAL_DIV2) - matches stock 4.9
-	 * uart_A. Mainline G12A defaults to xtal/2 with BAUD_XTAL_DIV2 set.
-	 * Both produce ~115200, but driver semantics differ; the BT chip
-	 * is sensitive to the divisor mode. DT prop handled by patch 0011.
-	 */
-	amlogic,xtal-div3;
+	/* xtal/2 divisor mode (G12A default): 3M = 12M/4 exact, 4 sample
+	 * periods/bit, the clean operating point the BT baud bump targets. */
 };
 
 /*

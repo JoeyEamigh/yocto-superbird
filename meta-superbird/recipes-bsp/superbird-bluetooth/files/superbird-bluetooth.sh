@@ -21,16 +21,12 @@ TTY="/dev/ttyAML1"
 LOW_HOLD_MS=100           # matches nixos-superbird stock 4.9 timing
 HIGH_SETTLE_MS=300
 
-# Highest rate this board's BCM<->SoC H4 UART carries cleanly under sustained load.
-# H4 carries no CRC, so UART bit errors do not surface as UART/HCI errors; they reach
-# iAP2 as link-checksum failures and trigger retransmits, so the only symptom is severe
-# slowness on large transfers. 4M is an exact divisor and looks clean but silently flips
-# ~1 byte per 38 KB under load (fine for tiny frames, ~35% loss on 16 KB ones). Do NOT
-# raise without moving to a CRC-protected transport (H5). 2M (~200 KB/s) still clears the
-# 3-DH5 EDR radio's ~125 KB/s ceiling, so it does not cap throughput. 115200 caps every BT
-# transfer near ~11 KB/s (single album art ~22s), so do not lower either. (3M does not
-# resync via the FC18 + stty path - the meson divisor rounds and the chip desyncs.)
-TARGET_BAUD=2000000
+# Host<->BCM H4 UART operating baud, bumped post-patchram via FC18 + stty. The mainline
+# xtal/2 divisor (G12A default) makes 3M an exact 12M/4 with 4 sample periods/bit, the
+# clean operating point stock ran. H4 has no CRC so margin matters: 4M drops to 3 periods/
+# bit, and going higher needs a CRC-protected transport (H5). 115200 caps BT throughput
+# near ~11 KB/s (single album art ~22s), so do not lower either.
+TARGET_BAUD=3000000
 
 # OEM-stamped public BDADDR cell. iAP2 IdentificationInformation carries this MAC
 # and the iPhone rejects identification if it does not match the bonded address.
@@ -122,7 +118,7 @@ pulse_chip_enable() {
 }
 
 # `-S 115200` pins the ldisc oper_speed to the chip's natural post-patchram baud
-# so hci_bcm's set_baudrate is a no-op round-trip; we bump to 4M ourselves after.
+# so hci_bcm's set_baudrate is a no-op round-trip; we bump to TARGET_BAUD ourselves after.
 # No `-N`: we want hardware flow control (without it meson_uart parks RTS via
 # TWO_WIRE_EN and the chip never sees CTS ready).
 attach_btattach() {
