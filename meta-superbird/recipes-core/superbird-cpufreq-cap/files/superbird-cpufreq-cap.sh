@@ -24,10 +24,13 @@ if [ "$CAP" -lt 1000000 ] || [ "$CAP" -gt 1800000 ]; then
     CAP="$DEFAULT_KHZ"
 fi
 
+GOVERNOR=performance
+
 APPLIED=0
 for policy in /sys/devices/system/cpu/cpufreq/policy*; do
     [ -w "$policy/scaling_max_freq" ] || continue
     echo "$CAP" > "$policy/scaling_max_freq"
+    [ -w "$policy/scaling_governor" ] && echo "$GOVERNOR" > "$policy/scaling_governor"
     APPLIED=$((APPLIED + 1))
 done
 
@@ -36,4 +39,4 @@ if [ "$APPLIED" -eq 0 ]; then
     exit 1
 fi
 
-echo "superbird-cpufreq-cap: scaling_max_freq=$CAP applied to $APPLIED polic(ies)"
+echo "superbird-cpufreq-cap: scaling_max_freq=$CAP governor=$GOVERNOR applied to $APPLIED polic(ies)"

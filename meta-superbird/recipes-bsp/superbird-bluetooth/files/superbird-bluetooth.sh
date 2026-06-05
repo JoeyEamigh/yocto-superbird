@@ -1,5 +1,5 @@
 #!/bin/sh
-# Bring up the Superbird's BCM20703A2 over UART_A (= /dev/ttyAML1) at 4 Mbps.
+# Bring up the Superbird's BCM20703A2 over UART_A (= /dev/ttyAML1) at 3 Mbps.
 #
 # REG_ON (GPIOX_17) is pulsed LOW->HIGH to take the chip out of hardware reset;
 # userspace btattach + the broadcom protocol carry HCI (mainline hci_bcm serdev
@@ -8,7 +8,7 @@
 # The service must be FAST and BOUNCE-FREE: under first-boot load the chip comes
 # up but btattach can exit shortly after the baud bump. The old code ended in
 # `wait $BTATTACH_PID`, so btattach's exit became the service's exit -> a spurious
-# restart even though BT was already UP@4M. Instead we bring up to UP@4M, signal
+# restart even though BT was already UP@3M. Instead we bring up to UP@3M, signal
 # readiness ONCE, then SUPERVISE btattach: if it dies we re-bring-up in-script
 # within a budget and never exit non-zero after readiness.
 
@@ -32,7 +32,7 @@ TARGET_BAUD=3000000
 # and the iPhone rejects identification if it does not match the bonded address.
 BT_MAC_CELL_GLOB="/sys/bus/nvmem/devices/efuse0/cells/bt-mac@*"
 
-# Wall-clock budget to first UP@4M. The .service TimeoutStartSec must be larger so
+# Wall-clock budget to first UP@3M. The .service TimeoutStartSec must be larger so
 # systemd doesn't kill the start before we exhaust this.
 BRINGUP_BUDGET_S=40
 # Per-attempt cap on the synchronous hciconfig-up patchram window before we give
@@ -252,7 +252,7 @@ set_link_policy() {
     hciconfig hci0 lp rswitch >/dev/null 2>&1 || log "WARN: could not clear sniff from link policy"
 }
 
-# One full bring-up attempt. On success btattach is running and hci0 is UP@2M and
+# One full bring-up attempt. On success btattach is running and hci0 is UP@3M and
 # responsive. On any failure returns non-zero; the next attempt's pulse kills the
 # leftover btattach and starts clean.
 attempt() {
@@ -286,8 +286,8 @@ main() {
     fi
 
     if ! bringup_to_ready; then
-        # Could not reach UP@4M within budget. Do NOT signal readiness (readiness
-        # means UP@4M so bluetoothd opens a 4M adapter). Let systemd's
+        # Could not reach UP@3M within budget. Do NOT signal readiness (readiness
+        # means UP@3M so bluetoothd opens a 3M adapter). Let systemd's
         # TimeoutStartSec restart us for a fresh try; a genuinely dead chip is the
         # daemon's "assume adapter dead" backstop, not ours to mask.
         log "ERROR: no UP@${TARGET_BAUD} within ${BRINGUP_BUDGET_S}s budget"

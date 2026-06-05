@@ -34,8 +34,8 @@ bringup path on the Spotify Car Thing (S905D2 / G12A):
     meson_uart_reset + release_port dance entirely. uart_add_one_port
     -> request_port runs once.
   - Per-port DT override "amlogic,xtal-div3" forces xtal/3 baud divisor
-    mode (no BAUD_XTAL_DIV2 bit) on G12A. Stock uses xtal/3 for
-    uart_A; mainline G12A defaults to xtal/2 with BAUD_XTAL_DIV2 set.
+    mode (no BAUD_XTAL_DIV2 bit) on G12A. Stock ran xtal/2 for uart_A
+    at 3M, which mainline G12A already defaults to with BAUD_XTAL_DIV2 set.
 
 Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
 Upstream-Status: Pending
