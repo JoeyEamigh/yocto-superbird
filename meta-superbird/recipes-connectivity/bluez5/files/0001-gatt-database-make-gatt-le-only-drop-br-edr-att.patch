@@ -1,0 +1,75 @@
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Subject: [PATCH] gatt-database: make GATT LE-only (drop BR/EDR ATT + SDP)
+
+Bridgething turns the Car Thing into a Bluetooth peripheral that a phone
+talks to over BR/EDR (RFCOMM: iAP2 for iOS, the bridgething SPP for
+Android) and, separately, over LE: the device is a GATT client of the
+phone's LE services and hosts a small LE pair-trigger GATT service.
+Nothing in the product consumes GATT over the classic BR/EDR transport.
+
+Stock BlueZ unconditionally publishes the Generic Access, Generic
+Attribute, and Device Information SDP records carrying an ATT/L2CAP
+PSM-31 protocol descriptor, and listens for ATT on BR/EDR L2CAP PSM 31.
+To a dual-mode central this advertises "GATT is reachable over BR/EDR",
+so it bridges an ATT channel onto the existing classic ACL and uses that
+for GATT instead of opening an LE connection. On this product that
+bearer is a dead end: the LE-only services the device needs (media
+volume, notifications) are never served over it, the writes that request
+them time out, and the failed ATT transaction tears the whole device
+object down, dragging the classic link with it.
+
+Make GATT strictly LE-only: suppress all GATT SDP record publication
+(database_add_record becomes a no-op) and remove the BR/EDR ATT PSM-31
+listener. The LE ATT listener (fixed CID 4), the in-memory GATT
+database, and every LE GATT client/server path are untouched, so LE
+discovery and the device's own pair-trigger service keep working. EATT's
+BR/EDR PSM is already gated off by the default single-channel build.
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Upstream-Status: Inappropriate [product-specific use case]
+---
+
+diff --git a/src/gatt-database.c b/src/gatt-database.c
+--- a/src/gatt-database.c
++++ b/src/gatt-database.c
+@@ -823,6 +823,15 @@
+ 	const char *name = NULL;
+ 	char uuidstr[MAX_LEN_UUID_STR];
+
++	/* Superbird: no GATT-over-BR/EDR. This product uses BR/EDR only for
++	 * RFCOMM (iAP2 + the bridgething SPP) and has no GATT-over-BR/EDR
++	 * consumer. Publishing GAP/GATT/DIS SDP records advertises GATT
++	 * reachability over the classic ATT bearer, which steers dual-mode
++	 * central peers onto BR/EDR ATT instead of opening LE. Suppress all
++	 * GATT SDP record publication so GATT stays LE-only.
++	 */
++	return;
++
+ 	gatt_db_attribute_get_service_uuid(attr, &uuid);
+
+ 	switch (uuid.type) {
+@@ -4094,20 +4103,10 @@
+ 	}
+
+ bredr:
+-	/* BR/EDR socket */
+-	if (btd_adapter_get_bredr(adapter)) {
+-		database->bredr_io = bt_io_listen(connect_cb, NULL, NULL, NULL,
+-					&gerr, BT_IO_OPT_SOURCE_BDADDR, addr,
+-					BT_IO_OPT_PSM, BT_ATT_PSM,
+-					BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_MEDIUM,
+-					BT_IO_OPT_MTU, btd_opts.gatt_mtu,
+-					BT_IO_OPT_INVALID);
+-		if (database->bredr_io == NULL) {
+-			error("Failed to start listening: %s", gerr->message);
+-			g_error_free(gerr);
+-			goto fail;
+-		}
+-	}
++	/* Superbird: BR/EDR ATT (L2CAP PSM 31) listener removed; GATT is
++	 * LE-only (see database_add_record). The bredr: label is kept as the
++	 * goto target from the gatt_channels == 1 single-channel path above.
++	 */
+
+ 	if (g_dbus_register_interface(btd_get_dbus_connection(),
+ 						adapter_get_path(adapter),

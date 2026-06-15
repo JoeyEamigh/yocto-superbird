@@ -1,3 +1,10 @@
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
+# make GATT LE-only: drop the BR/EDR ATT PSM-31 listener + GATT-over-BR/EDR SDP
+# records so a dual-mode iOS opens a real LE link for GATT instead of bridging
+# ATT onto the classic iAP2 ACL (which never serves AMS/ANCS and wedges the bond)
+SRC_URI:append = " file://0001-gatt-database-make-gatt-le-only-drop-br-edr-att.patch"
+
 # Class of Device 0x7c0000; iOS gates iAP2 accept on a non-zero CoD
 do_install:append() {
     sed -i 's/^#Class = 0x000100$/Class = 0x7c0000/' \
