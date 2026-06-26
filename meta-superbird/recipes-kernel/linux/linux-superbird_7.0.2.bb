@@ -8,9 +8,14 @@ LINUX_VERSION = "7.0.2"
 LINUX_VERSION_EXTENSION = "-superbird"
 PV = "${LINUX_VERSION}+git${SRCPV}"
 
-# pinned to v7.0.2; flip to AUTOINC against linux-7.0.y to ride point releases
+# v7.0.2 commit (peeled v7.0.2^{}), pinned exactly. nobranch=1 skips
+# bitbake's git-branch-contains reachability check: with the premirrors
+# unreachable, the DL_DIR mirror is built via the fetch-fallback path that
+# leaves HEAD dangling, so `git branch --contains` errors and false-negatives
+# a commit that IS on linux-7.0.y. The rev is fixed, so the check adds nothing.
+# bump SRCREV by hand to ride point releases.
 SRCREV = "bff90486aa66dbad83a0777f3c17e34fcf26a3e5"
-SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;branch=linux-7.0.y;name=linux \
+SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;nobranch=1;name=linux \
            file://superbird.cfg \
            file://superbird-disable.cfg \
            file://meson-g12a-superbird.dts \
