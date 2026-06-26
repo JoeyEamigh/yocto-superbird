@@ -252,6 +252,28 @@ set_link_policy() {
     hciconfig hci0 lp rswitch >/dev/null 2>&1 || log "WARN: could not clear sniff from link policy"
 }
 
+# LE SMP (pairing) registers only on a mgmt-driven power-on transition with
+# HCI_MGMT set. The legacy `hciconfig up` bring-up above opens the controller
+# before bluetoothd exists, so handing bluetoothd an already-up adapter makes it
+# skip the transition and LE SMP never registers - iOS opens an LE link, sends a
+# Pairing Request, and the kernel cannot answer ("security requested but not
+# available"), so AMS/ANCS never bond. We down the adapter before signalling
+# readiness so bluetoothd's AutoEnable power-on registers SMP. The kernel re-adds
+# sniff to the default link policy on that power-on, so wait for it and re-apply
+# rswitch-only. Runs once in the background after readiness.
+reapply_link_policy_when_powered() {
+    _i=0
+    while [ "${_i}" -lt 120 ]; do
+        if hciconfig hci0 2>/dev/null | grep -qw UP; then
+            set_link_policy
+            return 0
+        fi
+        sleep 0.5
+        _i=$(( _i + 1 ))
+    done
+    log "WARN: adapter never powered by bluetoothd; sniff left at kernel default"
+}
+
 # One full bring-up attempt. On success btattach is running and hci0 is UP@3M and
 # responsive. On any failure returns non-zero; the next attempt's pulse kills the
 # leftover btattach and starts clean.
@@ -287,13 +309,19 @@ main() {
 
     if ! bringup_to_ready; then
         # Could not reach UP@3M within budget. Do NOT signal readiness (readiness
-        # means UP@3M so bluetoothd opens a 3M adapter). Let systemd's
-        # TimeoutStartSec restart us for a fresh try; a genuinely dead chip is the
-        # daemon's "assume adapter dead" backstop, not ours to mask.
+        # means the chip+host are at 3M so bluetoothd opens a 3M adapter). Let
+        # systemd's TimeoutStartSec restart us for a fresh try; a genuinely dead
+        # chip is the daemon's "assume adapter dead" backstop, not ours to mask.
         log "ERROR: no UP@${TARGET_BAUD} within ${BRINGUP_BUDGET_S}s budget"
         kill_all
         exit 1
     fi
+
+    # Hand bluetoothd a DOWN adapter so its power-on registers LE SMP (see
+    # reapply_link_policy_when_powered). The 3M baud lives in the ldisc/tty, not in
+    # HCI up/down, so bluetoothd still opens a 3M adapter.
+    hciconfig hci0 down >/dev/null 2>&1 || true
+    reapply_link_policy_when_powered &
 
     if [ -n "${NOTIFY_SOCKET:-}" ]; then
         systemd-notify --ready
