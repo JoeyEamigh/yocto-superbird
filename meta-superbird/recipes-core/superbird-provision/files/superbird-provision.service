@@ -10,6 +10,7 @@ ConditionPathExists=/dev/mmcblk0
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/libexec/superbird-provision
+StandardError=journal+console
 
 [Install]
 WantedBy=sysinit.target

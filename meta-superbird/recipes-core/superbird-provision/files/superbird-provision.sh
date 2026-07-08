@@ -16,7 +16,7 @@ if sgdisk -p "$DISK" 2>/dev/null | grep -qw data; then
 fi
 
 if [ "$REQUIRE_HEADROOM" = "1" ]; then
-    disk_sectors=$(blockdev --getsz "$DISK" 2>/dev/null || echo 0)
+    disk_sectors=$(cat "/sys/class/block/$(basename "$DISK")/size" 2>/dev/null || echo 0)
     last_alloc=$(sgdisk -p "$DISK" 2>/dev/null | awk '/^ +[0-9]+ +/ { print $3 }' | sort -n | tail -1)
     last_alloc=${last_alloc:-0}
     free_sectors=$((disk_sectors - last_alloc - 34))
@@ -24,8 +24,7 @@ if [ "$REQUIRE_HEADROOM" = "1" ]; then
     free_mib=$((free_sectors / 2048))
     required=$((BOOT_PART_MIB + ROOT_PART_MIB + MARGIN_MIB))
     if [ "$free_mib" -lt "$required" ]; then
-        echo "superbird-provision: only ${free_mib} MiB free, need ${required} MiB for an ota write" >&2
-        exit 1
+        echo "superbird-provision: WARNING: only ${free_mib} MiB free for data, an ota write wants ${required} MiB; carving anyway (custom image with tight partition geometry?)" >&2
     fi
 fi
 

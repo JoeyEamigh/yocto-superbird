@@ -1,4 +1,5 @@
 # fail the build when wic geometry leaves no room for one ota write on the smallest target eMMC.
+# gated on SUPERBIRD_REQUIRE_OTA_HEADROOM: set it to 0 for a deliberate no-ota image to skip.
 
 python __anonymous() {
     enforce = d.getVar('SUPERBIRD_REQUIRE_OTA_HEADROOM') or "0"
