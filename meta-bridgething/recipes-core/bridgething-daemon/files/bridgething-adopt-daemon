@@ -1,0 +1,40 @@
+#!/bin/sh
+# adopt the booted image's factory floor (daemon + builtin webapps) onto bandaid when the image
+# version changed, so an image ota (or an a/b rollback) carries its matching daemon and builtin
+# webapps and they revert together. a daemon-only / builtin-webapp ota leaves the recorded image
+# version untouched, so it is never re-adopted or downgraded. best-effort: any missing input leaves
+# the existing bandaid copy in place. runs as bridgething.service ExecStartPre, after
+# opt-overlay@bridgething has bound bandaid to /opt/bridgething.
+set -u
+
+META=/etc/superbird
+RECORD=/opt/bridgething/.adopted-image-version
+FACTORY=/usr/lib/bridgething
+BANDAID=/opt/bridgething
+
+imgver=$(sed -n 's/.*"imageVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$META" 2>/dev/null | head -n1)
+[ -n "$imgver" ] || exit 0
+
+recorded=$(cat "$RECORD" 2>/dev/null || true)
+[ "$imgver" = "$recorded" ] && exit 0
+
+if [ -f "$FACTORY/daemon/bridgething.current" ] && [ -d "$BANDAID/daemon" ]; then
+    if [ -f "$BANDAID/daemon/bridgething.current" ]; then
+        cp -a "$BANDAID/daemon/bridgething.current" "$BANDAID/daemon/bridgething.previous"
+    fi
+    cp -a "$FACTORY/daemon/bridgething.current" "$BANDAID/daemon/bridgething.current.adopt"
+    mv "$BANDAID/daemon/bridgething.current.adopt" "$BANDAID/daemon/bridgething.current"
+
+    for app in hub stock; do
+        [ -d "$FACTORY/webapps/$app" ] || continue
+        rm -rf "$BANDAID/webapps/$app.adopt"
+        cp -a "$FACTORY/webapps/$app" "$BANDAID/webapps/$app.adopt"
+        rm -rf "$BANDAID/webapps/$app"
+        mv "$BANDAID/webapps/$app.adopt" "$BANDAID/webapps/$app"
+    done
+
+    echo "$imgver" > "$RECORD"
+    echo "bridgething-adopt-daemon: adopted image $imgver factory floor onto bandaid" >&2
+fi
+
+exit 0

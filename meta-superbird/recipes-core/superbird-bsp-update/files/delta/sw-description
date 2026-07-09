@@ -1,4 +1,4 @@
-# wic A/B delta OTA: boot.vfat raw + zck delta on rootfs.
+# wic A/B delta OTA: zck delta on both boot.vfat and rootfs.
 # delta handler reuses chunks from the active slot (source=) and fetches missing chunks
 # from url over http; chains to raw handler for the write to inactive root_X.
 # requires swupdate CONFIG_DELTA + CONFIG_DELTA_SOURCE_RAW + CONFIG_DOWNLOAD.
@@ -14,10 +14,14 @@ software =
         slot_a: {
             images: (
                 {
-                    filename = "boot.vfat";
-                    type = "raw";
+                    filename = "boot.vfat.zck.zckheader";
+                    type = "delta";
                     device = "/dev/disk/by-partlabel/boot_a";
-                    installed-directly = true;
+                    properties: {
+                        url = "@@DELTA_URL_BASE@@/boot.vfat.zck";
+                        source = "/dev/disk/by-partlabel/boot_b";
+                        chain = "raw";
+                    };
                 },
                 {
                     filename = "system.img.zck.zckheader";
@@ -38,10 +42,14 @@ software =
         slot_b: {
             images: (
                 {
-                    filename = "boot.vfat";
-                    type = "raw";
+                    filename = "boot.vfat.zck.zckheader";
+                    type = "delta";
                     device = "/dev/disk/by-partlabel/boot_b";
-                    installed-directly = true;
+                    properties: {
+                        url = "@@DELTA_URL_BASE@@/boot.vfat.zck";
+                        source = "/dev/disk/by-partlabel/boot_a";
+                        chain = "raw";
+                    };
                 },
                 {
                     filename = "system.img.zck.zckheader";

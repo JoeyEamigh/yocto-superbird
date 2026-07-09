@@ -10,7 +10,8 @@ OnFailure=bridgething-rollback.service
 
 [Service]
 Type=notify
-Environment=RUST_LOG=info,bluer=warn
+Environment=RUST_LOG=warn,bridgething=info,libbridgething=info,bridgething_iap2=info,bridgething_mfi=info
+ExecStartPre=/usr/libexec/bridgething-adopt-daemon
 ExecStart=/opt/bridgething/daemon/bridgething.current
 Restart=on-failure
 RestartSec=2

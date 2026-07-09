@@ -23,7 +23,6 @@ do_compile() {
     export HOME=${BUN_HOME}
 
     bun install --frozen-lockfile --no-progress
-    bun pm trust --all
     bun run build
 }
 

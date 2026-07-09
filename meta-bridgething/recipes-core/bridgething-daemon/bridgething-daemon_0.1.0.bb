@@ -12,6 +12,7 @@ SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=m
            file://bridgething.conf \
            file://bridgething-rollback \
            file://bridgething-rollback.service \
+           file://bridgething-adopt-daemon \
            file://bridgething-dev.conf"
 SRCREV = "${AUTOREV}"
 
@@ -55,6 +56,8 @@ do_install() {
     install -d ${D}${libexecdir}
     install -m 0755 ${UNPACKDIR}/bridgething-rollback \
         ${D}${libexecdir}/bridgething-rollback
+    install -m 0755 ${UNPACKDIR}/bridgething-adopt-daemon \
+        ${D}${libexecdir}/bridgething-adopt-daemon
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/bridgething.service \
@@ -77,6 +80,7 @@ FILES:${PN} = " \
     ${OPT_OVERLAY_TARGET} \
     ${DAEMON_FLOOR_DIR}/bridgething.current \
     ${libexecdir}/bridgething-rollback \
+    ${libexecdir}/bridgething-adopt-daemon \
     ${systemd_system_unitdir}/bridgething.service \
     ${systemd_system_unitdir}/bridgething-rollback.service \
     ${nonarch_libdir}/tmpfiles.d/bridgething.conf \
