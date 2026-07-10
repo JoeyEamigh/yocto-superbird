@@ -32,7 +32,7 @@ sstate-cache and ccache under `build/` and `ccache/`. There's also a
 public sstate mirror that primes most of the build for you.
 
 ```bash
-KAS_CONTAINER_ENGINE=podman just build superbird   # if you don't run docker
+KAS_CONTAINER_ENGINE=podman just build superbird   # if you don't run docker, otherwise omit the env var
 ```
 
 ### macOS (Apple Silicon)
@@ -61,22 +61,13 @@ produces a flashthing zip:
 
 ## Flash
 
-Put the device into Amlogic mask-rom USB (`1b8e:c003`): hold the
-wheel-click button while plugging in USB. From a booted device,
-`just reboot-to-maskrom` does the same without unplugging.
+Put the device into Amlogic mask-rom USB (`1b8e:c003`): hold buttons
+1+4 while plugging in USB. From a booted device.
 
 ```bash
 just flash superbird-bsp-image
 just flash superbird-kiosk-dev-image
 just flash bridgething-prod-image
-just boot-kernel              # exit mask-rom and cold-boot the new image
-```
-
-For an env-only change (touched `uboot.env` only, no kernel or rootfs
-rebuild) use the env-only zip:
-
-```bash
-just flash-env superbird-bsp-image    # ~2s vs 30-60s for a full reflash
 ```
 
 ## Talk to the device
@@ -90,45 +81,6 @@ defaults to `superbird-kiosk.local`; bridgething's images default to
 just ssh                      # interactive shell
 just ssh 'uname -a'           # one-shot
 ```
-
-UART for pre-SSH boots or kernel panics:
-
-```bash
-just console start            # long-lived agent on /dev/ttyUSB0
-just cmd 'dmesg | tail -30'
-just console stop
-```
-
-The agent keeps FT232 RTS deasserted (it's wired to the SoC reset pin),
-so the board doesn't reset every time another process opens the serial
-node. Don't open `/dev/ttyUSB0` directly while the agent is running.
-
-Other knobs:
-
-```bash
-just reset-pulse 200          # 200ms RTS LOW, soft reset
-just reboot-to-maskrom        # drop into 1b8e:c003 for a full wic flash
-just reboot-to-fastboot       # drop into u-boot fastboot
-```
-
-## OTA
-
-OTAs are A/B with libswupdate. A successful install writes the inactive
-slot, flips `slot_active` in u-boot env, and reboots; if the new slot
-fails to come up three times the bootloader rolls back. The companion
-app drives the `.swu` push; the on-device `bridgething-ab` binary is a
-debug helper (`status`, `set-slot a|b`) and does not drive installs
-itself.
-
-Three install kinds:
-
-- `image`: writes a full `.swu` to root_X via libswupdate
-- `daemon`: aarch64 binary rotated atomically on the bandaid bind-mount, service restart
-- `builtin-webapp`: hub or stock webapp zip swapped on the bandaid bind-mount, service restart
-
-Delta OTAs (zchunk) ship only the changed chunks and apply via
-HTTP range requests over the USB link. The handler integration lives
-in `meta-superbird/recipes-support/swupdate/`.
 
 ## Layer layout
 
@@ -148,10 +100,6 @@ in `meta-superbird/recipes-support/swupdate/`.
 For device interaction you'll also want `ssh`, `avahi-daemon` (mDNS),
 and on Linux your user in the `dialout` (Debian/Ubuntu) or `uucp` (Arch)
 group so you can open `/dev/ttyUSB*`.
-
-The Python helpers under `scripts/` use PEP-723 inline metadata. If you
-have `uv` installed they Just Work; otherwise read the shebang for the
-required interpreter and packages.
 
 ## License
 
