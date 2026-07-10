@@ -29,8 +29,7 @@ just build bridgething        # bridgething's full stack
 
 The first cold build downloads a lot. Subsequent builds reuse the local
 sstate-cache and ccache under `build/` and `ccache/`. There's also a
-public sstate mirror at `http://yocto.24hgr.love/sstate/` (read-only,
-configured in `kas/base.yml`) that primes most of the build for you.
+public sstate mirror that primes most of the build for you.
 
 ```bash
 KAS_CONTAINER_ENGINE=podman just build superbird   # if you don't run docker
