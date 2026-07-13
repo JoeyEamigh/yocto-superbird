@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+STATE_DIR=/var/lib/superbird-usb-role
+BOOT_ROLE_FILE="$STATE_DIR/boot-role"
+REVERT_UNIT=superbird-usb-role-revert
+DEFAULT_REVERT_SECS=300
+
+role_switch() {
+    for sw in /sys/class/usb_role/*/; do
+        [ -e "$sw/role" ] && { printf '%s' "$sw/role"; return 0; }
+    done
+    echo "no usb role switch found; kernel or dt does not expose one" >&2
+    return 1
+}
+
+set_role() {
+    printf '%s' "$1" > "$(role_switch)"
+}
+
+cancel_revert() {
+    systemctl stop "$REVERT_UNIT.timer" 2>/dev/null || true
+}
+
+usage() {
+    cat <<EOF
+usage: superbird-usb-role <command>
+  to-host [--revert-secs N | --no-revert]  switch the port to host role;
+                                           reverts to device after N seconds
+                                           (default $DEFAULT_REVERT_SECS) unless confirmed
+  to-device                                switch back to device (gadget) role
+  confirm                                  cancel a scheduled revert
+  persist <host|device|clear>              set/clear the role applied at boot
+  status                                   current role, pending revert, boot role
+EOF
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+    to-host)
+        shift
+        revert_secs="$DEFAULT_REVERT_SECS"
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --revert-secs) revert_secs="$2"; shift 2 ;;
+                --no-revert) revert_secs=0; shift ;;
+                *) usage >&2; exit 2 ;;
+            esac
+        done
+        cancel_revert
+        set_role host
+        if [ "$revert_secs" -gt 0 ]; then
+            systemd-run --collect --unit "$REVERT_UNIT" --on-active="${revert_secs}s" \
+                /usr/bin/superbird-usb-role to-device >/dev/null
+            echo "host role set; reverting to device in ${revert_secs}s unless confirmed"
+        else
+            echo "host role set; no automatic revert"
+        fi
+        ;;
+    to-device)
+        cancel_revert
+        set_role device
+        echo "device role set"
+        ;;
+    confirm)
+        cancel_revert
+        echo "scheduled revert cancelled"
+        ;;
+    persist)
+        mkdir -p "$STATE_DIR"
+        case "${2:-}" in
+            host|device) printf '%s\n' "$2" > "$BOOT_ROLE_FILE"; echo "boot role: $2" ;;
+            clear) rm -f "$BOOT_ROLE_FILE"; echo "boot role cleared" ;;
+            *) usage >&2; exit 2 ;;
+        esac
+        ;;
+    status)
+        echo "role: $(cat "$(role_switch)")"
+        if systemctl is-active --quiet "$REVERT_UNIT.timer" 2>/dev/null; then
+            echo "revert: scheduled ($(systemctl show "$REVERT_UNIT.timer" -P NextElapseUSecMonotonic 2>/dev/null))"
+        else
+            echo "revert: none"
+        fi
+        echo "boot role: $(cat "$BOOT_ROLE_FILE" 2>/dev/null || echo device)"
+        ;;
+    *)
+        usage >&2
+        [ "$cmd" = "-h" ] || [ "$cmd" = "--help" ] && exit 0
+        exit 2
+        ;;
+esac

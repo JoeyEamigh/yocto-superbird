@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply persisted USB port role
+ConditionPathExists=/var/lib/superbird-usb-role/boot-role
+After=var.mount
+Requires=var.mount
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'role="$(cat /var/lib/superbird-usb-role/boot-role)"; if [ "$role" = "host" ]; then exec /usr/bin/superbird-usb-role to-host --no-revert; else exec /usr/bin/superbird-usb-role to-device; fi'
+
+[Install]
+WantedBy=multi-user.target

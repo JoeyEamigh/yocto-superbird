@@ -8,16 +8,11 @@ LINUX_VERSION = "7.0.2"
 LINUX_VERSION_EXTENSION = "-superbird"
 PV = "${LINUX_VERSION}+git${SRCPV}"
 
-# v7.0.2 commit (peeled v7.0.2^{}), pinned exactly. nobranch=1 skips
-# bitbake's git-branch-contains reachability check: with the premirrors
-# unreachable, the DL_DIR mirror is built via the fetch-fallback path that
-# leaves HEAD dangling, so `git branch --contains` errors and false-negatives
-# a commit that IS on linux-7.0.y. The rev is fixed, so the check adds nothing.
-# bump SRCREV by hand to ride point releases.
 SRCREV = "bff90486aa66dbad83a0777f3c17e34fcf26a3e5"
 SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protocol=https;nobranch=1;name=linux \
            file://superbird.cfg \
            file://superbird-disable.cfg \
+           file://superbird-usb-host.cfg \
            file://meson-g12a-superbird.dts \
            file://0001-drm-panel-st7701-add-spotify-superbird-variant.patch \
            file://0002-Bluetooth-btbcm-add-BCM20703A2-UART-subver.patch \
@@ -38,7 +33,6 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
 
 inherit kernel
 
-# point S at the real unpack dir so do_symlink_kernsrc moves source into STAGING_KERNEL_DIR
 S = "${UNPACKDIR}/${BP}"
 
 KERNEL_VERSION_SANITY_SKIP = "1"
@@ -46,7 +40,6 @@ KERNEL_VERSION_SANITY_SKIP = "1"
 COMPATIBLE_MACHINE = "^superbird$"
 
 do_configure() {
-    # drop the board dts into the in-tree amlogic dt dir + register it (idempotent)
     install -m 0644 ${UNPACKDIR}/meson-g12a-superbird.dts \
         ${S}/arch/arm64/boot/dts/amlogic/meson-g12a-superbird.dts
     if ! grep -q 'meson-g12a-superbird.dtb' ${S}/arch/arm64/boot/dts/amlogic/Makefile; then
@@ -54,13 +47,17 @@ do_configure() {
             ${S}/arch/arm64/boot/dts/amlogic/Makefile
     fi
 
-    # in-tree arm64 defconfig + our additive fragment + our negation fragment.
-    # disable fragment trims arm64-defconfig drift (other-vendor SoCs, server bits,
-    # ChromeOS firmware) - kconfig drops every dependent symbol on olddefconfig.
     oe_runmake -C ${S} O=${B} defconfig
     fragments=""
     [ -s ${UNPACKDIR}/superbird.cfg ] && fragments="$fragments ${UNPACKDIR}/superbird.cfg"
     [ -s ${UNPACKDIR}/superbird-disable.cfg ] && fragments="$fragments ${UNPACKDIR}/superbird-disable.cfg"
+    [ -s ${UNPACKDIR}/superbird-usb-host.cfg ] && fragments="$fragments ${UNPACKDIR}/superbird-usb-host.cfg"
+    for frag in ${UNPACKDIR}/*.cfg; do
+        case "$(basename $frag)" in
+            superbird.cfg|superbird-disable.cfg|superbird-usb-host.cfg) ;;
+            *) [ -s "$frag" ] && fragments="$fragments $frag" ;;
+        esac
+    done
     if [ -n "$fragments" ]; then
         ${S}/scripts/kconfig/merge_config.sh -m -O ${B} ${B}/.config $fragments
     fi

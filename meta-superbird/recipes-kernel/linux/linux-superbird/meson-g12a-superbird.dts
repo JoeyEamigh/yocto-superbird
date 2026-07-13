@@ -299,19 +299,20 @@
 	vqmmc-supply = <&flash_1v8>;
 };
 
-/* USB: only the peripheral-side path (DWC2 via usb2_phy1) is needed for our
- * dev-iteration gadget. dr_mode = "peripheral" makes the top-level controller
- * route to DWC2 and skip DWC3 host-controller setup. Phy-supply points at
- * main_3v3 - G12A USB2 phy driver just enables its supply regulator on probe,
- * and the Superbird USB-C port takes VBUS from the host, so we don't need a
- * separate vbus-supply here. */
+/* USB: dr_mode = "otg" makes the meson glue register a usb_role_switch so the
+ * single port can flip to host at runtime (/sys/class/usb_role). Boot role is
+ * device: the gadget path (DWC2 via usb2_phy1) is unchanged and host mode is a
+ * runtime opt-in, practical only behind a powered OTG hub since this port is
+ * also the board's power feed. Phy-supply points at main_3v3 - the G12A USB2
+ * phy driver just enables its supply regulator on probe, and the port takes
+ * VBUS from the upstream host, so no separate vbus-supply. */
 &usb2_phy1 {
 	phy-supply = <&main_3v3>;
 };
 
 &usb {
 	status = "okay";
-	dr_mode = "peripheral";
+	dr_mode = "otg";
 };
 
 /* DWC2 peripheral-side FIFO layout. G12A reserves 712 dwords of dedicated

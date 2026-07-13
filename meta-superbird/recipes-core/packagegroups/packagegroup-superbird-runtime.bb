@@ -15,6 +15,7 @@ RDEPENDS:${PN} = " \
     superbird-clock \
     superbird-timezone \
     superbird-usb-gadget \
+    superbird-usb-role \
     superbird-mdns \
     superbird-als \
     superbird-provision \

@@ -82,6 +82,41 @@ just ssh                      # interactive shell
 just ssh 'uname -a'           # one-shot
 ```
 
+## USB host mode
+
+The OTG port boots as a gadget but can flip to host at runtime. Flipping to host drops the
+gadget network and adb, so the helper schedules an automatic revert unless
+you confirm from another link:
+
+```bash
+superbird-usb-role to-host              # reverts to device in 300s unless confirmed
+superbird-usb-role confirm              # keep host mode
+superbird-usb-role to-device
+superbird-usb-role persist host         # apply host role on every boot
+superbird-usb-role status
+```
+
+Host-side class drivers are compiled as modules but not shipped in the
+default images. A downstream image picks the ones it wants:
+
+```bitbake
+IMAGE_INSTALL:append = " \
+    kernel-module-usb-storage kernel-module-sd-mod kernel-module-exfat \
+    kernel-module-cdc-ether kernel-module-r8152 \
+    kernel-module-ftdi-sio kernel-module-cdc-acm \
+"
+```
+
+The full set lives in
+`meta-superbird/recipes-kernel/linux/linux-superbird/superbird-usb-host.cfg`. For anything beyond that set, add a kernel config fragment in your own
+layer via a `linux-superbird` bbappend, e.g.
+
+```bitbake
+# linux-superbird_%.bbappend
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://my-usb-wifi.cfg"
+```
+
 ## Layer layout
 
 - `meta-superbird/` is the BSP: kernel, DTS, mainline u-boot, partition geometry, baseline systemd units, USB gadget, bluetooth, `superbird-init`, `packagegroup-superbird-runtime`, the `superbird-image` and `bandaid-image` bbclasses. See `meta-superbird/README.md`.

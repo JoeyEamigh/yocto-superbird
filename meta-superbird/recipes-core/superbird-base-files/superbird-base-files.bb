@@ -10,6 +10,7 @@ SRC_URI = " \
     file://fw_env.config \
     file://hwrevision \
     file://superbird-cache.conf \
+    file://05-ro-cachedir.conf \
 "
 
 S = "${UNPACKDIR}"
@@ -40,6 +41,12 @@ do_install() {
     # /root is on the ro rootfs; redirect ~/.cache to the writable /var/cache
     install -d ${D}/root
     ln -sf /var/cache ${D}/root/.cache
+
+    # ro font cache dir baked at rootfs time; read before the /var cachedir
+    install -d ${D}${sysconfdir}/fonts/conf.d
+    install -m 0644 ${S}/05-ro-cachedir.conf \
+        ${D}${sysconfdir}/fonts/conf.d/05-ro-cachedir.conf
+    install -d ${D}${datadir}/fontconfig/cache
 }
 
 FILES:${PN} = " \
@@ -49,6 +56,8 @@ FILES:${PN} = " \
     ${sysconfdir}/fw_env.config \
     ${sysconfdir}/hwrevision \
     ${libdir}/tmpfiles.d/superbird-cache.conf \
+    ${sysconfdir}/fonts/conf.d/05-ro-cachedir.conf \
+    ${datadir}/fontconfig/cache \
     /root/.cache \
     /mnt/uboot-env \
 "
