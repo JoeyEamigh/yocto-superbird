@@ -6,5 +6,12 @@
   "icon": "spotify.svg",
   "role": "standard",
   "config": [],
-  "permissions": []
+  "permissions": [],
+  "overlays": {
+    "notifications": false,
+    "call": false,
+    "pairing": false,
+    "connection": false,
+    "volume": false
+  }
 }
