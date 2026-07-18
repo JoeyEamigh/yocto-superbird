@@ -29,7 +29,8 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0013-irqchip-meson-gpio-encode-trigger-type-into-hwirq.patch \
            file://0014-drm-panfrost-drop-noisy-Purging-bytes-shrinker-print.patch \
            file://0015-Input-rotary-encoder-settle-filtered-decode.patch \
-           file://0016-irqchip-meson-gpio-enable-input-glitch-filter.patch"
+           file://0016-irqchip-meson-gpio-enable-input-glitch-filter.patch \
+           file://0017-drm-meson-disable-afbc-scanout-on-superbird.patch"
 
 inherit kernel
 
