@@ -88,7 +88,7 @@ python do_flashthing_zip () {
         {"type": "bulkcmd", "value": "amlmmc key"},
         {"type": "writeBootPartition", "value": {"hwpart": 1, "data": {"filePath": "superbird-boot.bin"}}},
         {"type": "writeBootPartition", "value": {"hwpart": 2, "data": {"filePath": "superbird-boot.bin"}}},
-        {"type": "writeUserArea",      "value": {"lba": 0,   "data": {"filePath": "superbird.wic"}}},
+        {"type": "writeUserArea",      "value": {"lba": 0,   "data": {"filePath": "superbird.wic"}, "sparse": True}},
     ]
     if with_bandaid:
         steps.append({"type": "writeUserArea",

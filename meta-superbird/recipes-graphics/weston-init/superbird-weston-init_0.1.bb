@@ -5,6 +5,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = " \
     file://superbird-weston.service \
+    file://seatd-early.conf \
     file://weston.ini \
     file://weston-kiosk.ini \
     file://${SUPERBIRD_WESTON_SPLASH_IMAGE} \
@@ -32,6 +33,9 @@ SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${S}/superbird-weston.service ${D}${systemd_system_unitdir}/
+
+    install -d ${D}${systemd_system_unitdir}/seatd.service.d
+    install -m 0644 ${S}/seatd-early.conf ${D}${systemd_system_unitdir}/seatd.service.d/10-superbird-early.conf
 
     install -d ${D}${bindir}
     install -m 0755 ${S}/wsh ${D}${bindir}/wsh
@@ -62,6 +66,7 @@ pkg_postinst:${PN}-kiosk() {
 
 FILES:${PN} = " \
     ${systemd_system_unitdir}/superbird-weston.service \
+    ${systemd_system_unitdir}/seatd.service.d/10-superbird-early.conf \
     ${bindir}/wsh \
     ${datadir}/superbird/splash.png \
     ${datadir}/superbird/weston-dev.env \

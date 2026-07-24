@@ -236,7 +236,7 @@ exec ./chromium-bin \
     --password-store=basic \
     --no-pings \
     --autoplay-policy=no-user-gesture-required \
-    --js-flags="--max-old-space-size=192 --max-semi-space-size=16 --no-lazy" \
+    --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
     --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting \
     --disable-component-update \
     --disable-background-networking \

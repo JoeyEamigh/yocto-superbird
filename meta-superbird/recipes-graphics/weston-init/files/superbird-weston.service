@@ -1,8 +1,8 @@
 [Unit]
 Description=Weston compositor
 DefaultDependencies=no
-After=local-fs.target seatd.service dbus.socket systemd-tmpfiles-setup.service
-Wants=dbus.socket seatd.service
+After=seatd.service
+Wants=seatd.service
 
 [Service]
 Type=simple
@@ -16,7 +16,7 @@ Environment=XCURSOR_PATH=/usr/share/icons
 EnvironmentFile=-/etc/default/weston
 ExecStartPre=/bin/mkdir -p /run/weston
 ExecStartPre=/bin/chmod 700 /run/weston
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do [ -e /dev/dri/card0 ] && exit 0; sleep 0.5; done; exit 1'
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 200); do [ -e /dev/dri/card0 ] && exit 0; sleep 0.05; done; exit 1'
 ExecStart=/bin/sh -c 'exec /usr/bin/weston --config=/etc/weston.ini --socket=wayland-1 $WESTON_EXTRA_FLAGS'
 Restart=on-failure
 RestartSec=2
