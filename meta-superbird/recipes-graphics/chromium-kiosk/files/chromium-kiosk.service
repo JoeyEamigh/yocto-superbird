@@ -11,11 +11,13 @@ Environment=XDG_RUNTIME_DIR=/run/weston
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=XCURSOR_THEME=blank
 Environment=XCURSOR_PATH=/usr/share/icons
+Environment=HOME=/var/lib/chromium-kiosk
 # block chromium's setpriority(-8) on UI/IO/GPU threads; cap drop + nice limit + nnp together
 CapabilityBoundingSet=~CAP_SYS_NICE
 AmbientCapabilities=
 LimitNICE=20
 NoNewPrivileges=yes
+StateDirectory=chromium-kiosk
 CacheDirectory=chromium-kiosk
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 600); do [ -S /run/weston/wayland-1 ] && exit 0; sleep 0.05; done; exit 1'
 ExecStart=/usr/bin/chromium-kiosk-launch
