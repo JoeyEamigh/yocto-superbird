@@ -96,13 +96,11 @@
 # CAP_SYS_NICE makes setpriority return EPERM and the threads stay
 # at nice=0.
 #
-# --user-data-dir lives on /var/cache (the data partition) so V8's
-# Code Cache (parsed bytecode + JIT artifacts) and the HTTP disk
-# cache survive reboots. Persisting them turns first-paint-after-
-# boot into roughly the speed of a warm-cache navigation. The data
-# partition is shared between A/B slots so the cache survives OTA +
-# bootslot swap; the directory itself is created on first boot by
-# the unit's CacheDirectory= directive.
+# cast_shell resolves DIR_CAST_HOME from $HOME and stores durable browser
+# state there, including cookies and web storage. chromium-kiosk.service
+# points HOME at a StateDirectory under /var/lib so that state survives
+# reboots and A/B slot changes. --user-data-dir remains under /var/cache
+# for Chromium components that honor it; CacheDirectory creates that path.
 #
 # --disk-cache-size=50 MiB caps the HTTP cache. Vite's webapp output
 # uses content-hashed asset filenames so stale-cache-after-deploy
