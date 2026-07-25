@@ -26,18 +26,15 @@ do_compile() {
 
     # install once at the monorepo root so workspace:* resolves, then build all.
     bun install --frozen-lockfile --no-progress
-    for app in ${BUILTIN_WEBAPPS}; do
-        bun run build --filter=@bridgething/${app}-webapp
-    done
-    for app in ${EXAMPLE_WEBAPPS}; do
-        bun run build --filter=@bridgething/example-${app}
+    for app in ${BUILTIN_WEBAPPS} ${EXAMPLE_WEBAPPS}; do
+        bun run build --filter=@bridgething/webapp-${app}
     done
 }
 
 do_install() {
     install -d ${D}${BUILTIN_DIR}
     for app in ${BUILTIN_WEBAPPS}; do
-        dist="${S}/packages/${app}-webapp/dist"
+        dist="${S}/packages/webapps/builtin/${app}/dist"
         if [ ! -f "${dist}/manifest.json" ]; then
             bbfatal "builtin ${app}: ${dist}/manifest.json missing after build"
         fi
@@ -47,7 +44,7 @@ do_install() {
 
     install -d ${D}${EXAMPLES_DIR}
     for app in ${EXAMPLE_WEBAPPS}; do
-        dist="${S}/packages/examples/${app}/dist"
+        dist="${S}/packages/webapps/catalog/${app}/dist"
         if [ ! -f "${dist}/manifest.json" ]; then
             bbfatal "example ${app}: ${dist}/manifest.json missing after build"
         fi
