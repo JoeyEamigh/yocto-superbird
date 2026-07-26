@@ -1,0 +1,10 @@
+[Unit]
+Description=Bridgething modern websocket and webapp file serve socket
+
+[Socket]
+ListenStream=0.0.0.0:8891
+FileDescriptorName=bridgething-modern
+Service=bridgething.service
+
+[Install]
+WantedBy=sockets.target

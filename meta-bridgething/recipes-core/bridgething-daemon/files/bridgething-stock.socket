@@ -1,0 +1,10 @@
+[Unit]
+Description=Bridgething stock webapp websocket socket
+
+[Socket]
+ListenStream=0.0.0.0:8890
+FileDescriptorName=bridgething-stock
+Service=bridgething.service
+
+[Install]
+WantedBy=sockets.target

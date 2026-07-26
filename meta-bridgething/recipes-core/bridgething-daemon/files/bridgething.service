@@ -1,7 +1,9 @@
 [Unit]
 Description=Bridgething daemon
 After=network.target superbird-init.service opt-overlay@bridgething.service
+After=bridgething-stock.socket bridgething-modern.socket
 Wants=bluetooth.service
+Wants=bridgething-stock.socket bridgething-modern.socket
 Requires=opt-overlay@bridgething.service
 Conflicts=superbird-als.service
 StartLimitIntervalSec=60
@@ -10,6 +12,7 @@ OnFailure=bridgething-rollback.service
 
 [Service]
 Type=notify
+Sockets=bridgething-stock.socket bridgething-modern.socket
 Environment=RUST_LOG=warn,bridgething=info,libbridgething=info,bridgething_iap2=info,bridgething_mfi=info
 ExecStartPre=/usr/libexec/bridgething-adopt-daemon
 ExecStart=/opt/bridgething/daemon/bridgething.current

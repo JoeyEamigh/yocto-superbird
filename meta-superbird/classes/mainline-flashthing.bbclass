@@ -94,6 +94,7 @@ python do_flashthing_zip () {
         steps.append({"type": "writeUserArea",
                       "value": {"lba": bandaid_lba, "data": {"filePath": "bandaid.ext4"}}})
     meta = {
+        "$schema": "https://terbium.app/schema/meta/v1.json",
         "metadataVersion": 2,
         "name": image_basename,
         "version": distro_version,

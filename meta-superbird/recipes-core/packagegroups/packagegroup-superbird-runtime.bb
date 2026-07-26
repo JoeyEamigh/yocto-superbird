@@ -18,6 +18,7 @@ RDEPENDS:${PN} = " \
     superbird-usb-role \
     superbird-mdns \
     superbird-als \
+    superbird-audio \
     superbird-provision \
     superbird-slot-ok \
     superbird-cpufreq-cap \

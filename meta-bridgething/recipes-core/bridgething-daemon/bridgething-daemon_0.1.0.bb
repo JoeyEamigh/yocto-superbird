@@ -9,6 +9,8 @@ inherit cargo systemd pkgconfig
 # gitsm:// pulls the swupdate-sys vendored submodule; bindgen reads its headers at build time
 SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
            file://bridgething.service \
+           file://bridgething-stock.socket \
+           file://bridgething-modern.socket \
            file://bridgething.conf \
            file://bridgething-rollback \
            file://bridgething-rollback.service \
@@ -35,7 +37,7 @@ export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
 export DO_NOT_FORMAT = "1"
 
 # rollback unit is OnFailure-pulled, never enabled
-SYSTEMD_SERVICE:${PN} = "bridgething.service"
+SYSTEMD_SERVICE:${PN} = "bridgething.service bridgething-stock.socket bridgething-modern.socket"
 SYSTEMD_AUTO_ENABLE = "enable"
 
 RDEPENDS:${PN} += "opt-overlay swupdate systemd"
@@ -64,6 +66,10 @@ do_install() {
         ${D}${systemd_system_unitdir}/bridgething.service
     install -m 0644 ${UNPACKDIR}/bridgething-rollback.service \
         ${D}${systemd_system_unitdir}/bridgething-rollback.service
+    install -m 0644 ${UNPACKDIR}/bridgething-stock.socket \
+        ${D}${systemd_system_unitdir}/bridgething-stock.socket
+    install -m 0644 ${UNPACKDIR}/bridgething-modern.socket \
+        ${D}${systemd_system_unitdir}/bridgething-modern.socket
 
     install -d ${D}${nonarch_libdir}/tmpfiles.d
     install -m 0644 ${UNPACKDIR}/bridgething.conf \
@@ -83,6 +89,8 @@ FILES:${PN} = " \
     ${libexecdir}/bridgething-adopt-daemon \
     ${systemd_system_unitdir}/bridgething.service \
     ${systemd_system_unitdir}/bridgething-rollback.service \
+    ${systemd_system_unitdir}/bridgething-stock.socket \
+    ${systemd_system_unitdir}/bridgething-modern.socket \
     ${nonarch_libdir}/tmpfiles.d/bridgething.conf \
 "
 
