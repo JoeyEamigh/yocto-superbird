@@ -7,6 +7,7 @@
   "role": "standard",
   "config": [],
   "permissions": [],
+  "rendersVoiceDisplay": true,
   "overlays": {
     "notifications": false,
     "call": false,
