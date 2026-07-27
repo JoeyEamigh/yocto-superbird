@@ -5,6 +5,10 @@
 # version untouched, so it is never re-adopted or downgraded. best-effort: any missing input leaves
 # the existing bandaid copy in place. runs as bridgething.service ExecStartPre, after
 # opt-overlay@bridgething has bound bandaid to /opt/bridgething.
+#
+# adoption fires only on an observed version transition, so it needs a prior record. with no record
+# bandaid came straight off a flash and already holds this image's intended floor, which a composite
+# first-flash bundle deliberately builds newer than the rootfs copy.
 set -u
 
 META=/etc/superbird
@@ -17,6 +21,12 @@ imgver=$(sed -n 's/.*"imageVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' 
 
 recorded=$(cat "$RECORD" 2>/dev/null || true)
 [ "$imgver" = "$recorded" ] && exit 0
+
+if [ -z "$recorded" ]; then
+    echo "$imgver" > "$RECORD"
+    echo "bridgething-adopt-daemon: no record, taking bandaid as image $imgver floor" >&2
+    exit 0
+fi
 
 if [ -f "$FACTORY/daemon/bridgething.current" ] && [ -d "$BANDAID/daemon" ]; then
     if [ -f "$BANDAID/daemon/bridgething.current" ]; then

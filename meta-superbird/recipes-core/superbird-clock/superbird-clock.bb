@@ -1,5 +1,5 @@
 SUMMARY = "Monotonic-forward clock guard"
-DESCRIPTION = "No battery-backed RTC; this writes the current time to /var/lib/clock-mtime and forces system time forward to that mtime on early boot."
+DESCRIPTION = "No battery-backed RTC; this writes the current time to /var/lib/clock-mtime and forces system time forward on early boot to whichever is newer, that mtime or the image build time."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

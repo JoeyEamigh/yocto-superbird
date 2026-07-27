@@ -2,37 +2,63 @@
 # superbird-clock: monotonic-forward time guard.
 #
 # Two operations:
-#   --restore  read /var/lib/clock-mtime; if system time is behind
-#              that file's mtime, bump system time forward. Runs
-#              early at boot (Before=sysinit.target time-set.target).
+#   --restore  bump system time forward to the newest available floor.
+#              Runs early at boot (Before=sysinit.target time-set.target).
 #   --save     touch /var/lib/clock-mtime. Runs on shutdown (via
 #              ExecStop) and every 5 minutes via a timer, so an
 #              unclean shutdown loses at most one tick interval.
 #
-# /var is on the writable data partition and survives reboots; only
-# `amlmmc erase data` (amlmmc erase data on the next
-# flash) resets the clock-mtime file.
+# Two floor sources, newest wins: the mtime of the last --save, and the
+# image build time written to /usr/share/superbird/build-epoch at image
+# assembly. The build floor covers a first boot, where provision has just
+# carved /var and systemd's TIME_EPOCH fallback predates the image.
 
 set -eu
 
 CLOCK_FILE=/var/lib/clock-mtime
+BUILD_EPOCH_FILE=/usr/share/superbird/build-epoch
 
 log() {
     echo "superbird-clock: $*"
 }
 
+# busybox date has no -Iseconds
+stamp() {
+    date '+%Y-%m-%d %H:%M:%S'
+}
+
 restore() {
-    if [ ! -f "$CLOCK_FILE" ]; then
-        log "no $CLOCK_FILE; relying on systemd TIME_EPOCH floor"
+    floor=0
+    origin=""
+
+    if [ -f "$BUILD_EPOCH_FILE" ]; then
+        build_epoch=""
+        read -r build_epoch < "$BUILD_EPOCH_FILE" || true
+        case "$build_epoch" in
+            '' | *[!0-9]*) log "ignoring malformed $BUILD_EPOCH_FILE" ;;
+            *) floor=$build_epoch; origin="image build" ;;
+        esac
+    fi
+
+    if [ -f "$CLOCK_FILE" ]; then
+        saved=$(stat -c %Y "$CLOCK_FILE")
+        if [ "$saved" -gt "$floor" ]; then
+            floor=$saved
+            origin="saved clock"
+        fi
+    fi
+
+    if [ "$floor" -eq 0 ]; then
+        log "no floor available; relying on systemd TIME_EPOCH"
         return 0
     fi
-    saved=$(stat -c %Y "$CLOCK_FILE")
+
     now=$(date +%s)
-    if [ "$now" -lt "$saved" ]; then
-        date -s "@$saved" >/dev/null
-        log "bumped time forward $((saved - now))s to $(date -Iseconds)"
+    if [ "$now" -lt "$floor" ]; then
+        date -s "@$floor" >/dev/null
+        log "bumped time forward $((floor - now))s to $(stamp) ($origin floor)"
     else
-        log "system time $(date -Iseconds) ahead of saved $(date -d "@$saved" -Iseconds); no change"
+        log "system time $(stamp) at or past the $origin floor; no change"
     fi
 }
 
