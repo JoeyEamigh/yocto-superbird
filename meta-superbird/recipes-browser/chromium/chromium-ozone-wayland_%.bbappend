@@ -16,6 +16,8 @@
 #   0010: enable_touch_input on CastWebViewParams so blink sees hardware touch.
 #   0011: drop InitializeInputMethodForTesting so the real wayland input-method context
 #         loads and focus drives the compositor on-screen keyboard.
+#   0012: ProxyConfigServiceFixed from --proxy-server under the pref tracker; cast passes a
+#         nullptr base service and registers no proxy pref, so the switch is otherwise inert.
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 

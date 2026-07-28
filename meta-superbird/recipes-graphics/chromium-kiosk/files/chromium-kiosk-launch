@@ -18,27 +18,18 @@
 # loader finds its paks (assets/cast_shell.pak, chromecast_locales/
 # *.pak, icudtl.dat, snapshot_blob.bin) relative to cwd.
 #
-# CDP is unconditionally on at 9223. chromium >= M111 silently ignores
-# --remote-debugging-address=<non-localhost> (Google removed the bind-
-# elsewhere path for security), so the listener is always 127.0.0.1.
-# The host-side `bridgething-cdp` helper opens an SSH port-forward to
-# pull 9223 to the dev host. We bind 9223 (not chromium's traditional
-# 9222) because chromium hardcodes its bind port into every
-# webSocketDebuggerUrl it announces in /json/version + /json/list:
-# the tunnel must use the SAME port number on the host so that when
-# chrome://inspect on the dev host parses those URLs and tries to
-# open a DevTools session, the ws://127.0.0.1:9223/... target lands
-# back through the tunnel onto the device. As a side benefit, this
-# avoids colliding with a desktop chromium that typically owns 9222
-# itself. cast_shell's BUILD_ENG default UI-DevTools squat on 9223
-# is gated off by patch 0003 in the chromium bbappend.
+# CDP is unconditionally on at 9223, bound to 127.0.0.1. chromium >= M111
+# silently ignores --remote-debugging-address=<non-localhost>, so the
+# listener cannot be moved off loopback from here. kiosk-cdp-proxy fronts
+# it on 9222 for off-device clients; it needs a port of its own because a
+# 0.0.0.0 bind on 9223 would collide with this one. cast_shell's BUILD_ENG
+# default UI-DevTools squat on 9223 is gated off by patch 0003.
 #
-# --remote-allow-origins=* is required because chromium rejects
-# DevTools WS upgrades from non-localhost origins by default
-# (chrome://inspect, devtools://devtools, and any IDE that initiates
-# from a non-localhost Origin all hit a 403). The Origin header is
-# set by the *initiating page*, not the TCP destination, so the
-# tunnel does NOT make the origin check pass on its own.
+# --remote-allow-origins=* is required because chromium rejects DevTools WS
+# upgrades from non-localhost origins by default (chrome://inspect,
+# devtools://devtools, and any IDE that initiates from a non-localhost
+# Origin all hit a 403). The Origin header is set by the *initiating page*,
+# not the TCP destination, so no amount of forwarding satisfies it.
 #
 # --use-angle=gles routes through Mesa's libGLESv2 -> libgallium ->
 # Panfrost -> Mali-G31. chromium 147 only accepts (default | gles |
@@ -96,16 +87,17 @@
 # CAP_SYS_NICE makes setpriority return EPERM and the threads stay
 # at nice=0.
 #
-# cast_shell resolves DIR_CAST_HOME from $HOME and stores durable browser
-# state there, including cookies and web storage. chromium-kiosk.service
-# points HOME at a StateDirectory under /var/lib so that state survives
-# reboots and A/B slot changes. --user-data-dir remains under /var/cache
-# for Chromium components that honor it; CacheDirectory creates that path.
+# cast_shell resolves DIR_CAST_HOME from $HOME and keeps its whole browser
+# context there: cookies, local storage, session storage, DIPS, shared
+# storage. chromium-kiosk.service points HOME at a StateDirectory under
+# /var/lib so that state survives reboots and A/B slot changes.
+# --user-data-dir is a //chrome-layer switch that cast_shell never reads,
+# so the profile location is HOME and nothing else.
 #
-# --disk-cache-size=50 MiB caps the HTTP cache. Vite's webapp output
-# uses content-hashed asset filenames so stale-cache-after-deploy
-# is a non-issue: a new build produces new filenames, the old ones
-# are unreferenced and get LRU-evicted.
+# There is no HTTP disk cache to size or place: CastNetworkContexts::
+# ConfigureDefaultNetworkContextParams hardcodes http_cache_enabled=false,
+# so the profile carries no Code Cache or GPUCache either. The only
+# persistent accelerator here is Mesa's shader cache under $HOME/.cache.
 #
 # --enable-zero-copy switches GPU texture upload from the default
 # "CPU-side staging buffer + memcpy into GPU memory" path to a
@@ -118,15 +110,22 @@
 # Audio API for visualizations still need an unsuspended
 # AudioContext.
 #
-# Egress lockdown. KIOSK_PROXY_SERVER (when set; bridgething uses
-# socks5://127.0.0.1:1080 to tunnel webapp traffic over Bluetooth)
-# routes every byte chromium initiates. cast_shell already excludes
-# most of the chrome-specific warmup paths (Google services,
-# variations seed, GAIA, etc.); the --disable-background-networking +
-# --disable-component-update + --disable-features=SafeBrowsing,
-# DnsOverHttps,FedCm,AcceptCHFrame,Reporting belt-and-suspenders kill
-# any remaining background egress inherited from the chromium content/
-# tree.
+# Egress. KIOSK_PROXY_SERVER (bridgething uses socks5://127.0.0.1:1080 to
+# tunnel webapp traffic over the companion phone) routes every byte
+# chromium initiates; localhost stays DIRECT via the network stack's
+# implicit bypass, so the local webapp bundle and websocket are unaffected.
+# The switch only works because chromium patch 0012 layers a
+# ProxyConfigServiceFixed under Cast's pref-only proxy tracker.
+# What actually bounds egress is that proxy plus the absence of a default
+# route: with no proxy reachable there is no path off the device at all.
+# The --disable-features entries below trim content/-level background
+# chatter; the //chrome-layer network switches do not exist in cast_shell.
+#
+# OverscrollHistoryNavigation is disabled by feature, not by switch. It is
+# enabled by default and WebContentsViewAura installs a GestureNavSimple
+# delegate for it, so a horizontal overscroll pops session history. Webapps
+# here use horizontal swipe as a content gesture and route with the History
+# API, so leaving it on lets a swipe navigate the app backwards.
 #
 # --cast-graphics-width=800 --cast-graphics-height=480 seed the
 # CastScreen primary display via CastDisplayConfigurator's existing
@@ -207,38 +206,25 @@ cd /usr/lib/chromium
 
 # shellcheck disable=SC2086
 exec ./chromium-bin \
-    --no-first-run \
-    --no-default-browser-check \
     --no-sandbox \
     --ozone-platform=wayland \
-    --ozone-platform-hint=wayland \
     --use-angle=gles \
     --cast-graphics-width=800 \
     --cast-graphics-height=480 \
     --enable-input \
     --enable-wayland-ime \
     --wayland-text-input-version=1 \
-    --disk-cache-size=52428800 \
     --allow-insecure-localhost \
     --noerrdialogs \
-    --disable-session-crashed-bubble \
-    --disable-infobars \
-    --check-for-update-interval=31536000 \
     --disable-pinch \
-    --overscroll-history-navigation=0 \
     --force-color-profile=srgb \
     ${SINGLE_PROCESS_FLAG} \
     --num-raster-threads=4 \
     --disable-low-end-device-mode \
     --enable-zero-copy \
-    --password-store=basic \
-    --no-pings \
     --autoplay-policy=no-user-gesture-required \
     --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
-    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting \
-    --disable-component-update \
-    --disable-background-networking \
-    --user-data-dir=/var/cache/chromium-kiosk \
+    --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting,OverscrollHistoryNavigation \
     ${PROXY_SERVER_FLAG} \
     --remote-debugging-port=9223 \
     --remote-allow-origins=* \

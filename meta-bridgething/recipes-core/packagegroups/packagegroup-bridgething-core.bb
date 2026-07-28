@@ -23,4 +23,5 @@ RDEPENDS:${PN} = " \
     \
     chromium-ozone-wayland \
     chromium-kiosk \
+    kiosk-cdp-proxy \
 "

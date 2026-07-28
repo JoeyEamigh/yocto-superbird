@@ -1,0 +1,13 @@
+[package]
+name = "kiosk-cdp-proxy"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

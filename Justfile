@@ -237,7 +237,7 @@ flash-fast partlabel file="":
 push-webapp local name="":
   scripts/bridgething-push-webapp {{local}} {{name}}
 
-# SSH-tunnel chromium's CDP from the device's 127.0.0.1:9222 to the host.
+# SSH-tunnel chromium's CDP to the host. Normally reachable at bridgething.local:9222 without this.
 cdp port="9223":
   scripts/bridgething-cdp {{port}}
 

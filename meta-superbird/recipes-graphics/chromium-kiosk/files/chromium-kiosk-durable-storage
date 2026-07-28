@@ -1,0 +1,26 @@
+#!/bin/sh
+set -u
+
+if [ -r /etc/default/chromium-kiosk ]; then
+    # shellcheck disable=SC1091
+    . /etc/default/chromium-kiosk
+fi
+
+: "${HOME:=/var/lib/chromium-kiosk}"
+KIOSK_DURABLE_PATHS="${KIOSK_DURABLE_PATHS:-${HOME}/Local Storage}"
+
+IFS=:
+for path in $KIOSK_DURABLE_PATHS; do
+    [ -n "$path" ] || continue
+
+    if ! mkdir -p "$path" 2>/dev/null; then
+        echo "chromium-kiosk: cannot create $path, skipping" >&2
+        continue
+    fi
+
+    if ! chattr -R +S "$path" 2>/dev/null; then
+        echo "chromium-kiosk: +S unsupported on $path, writes there stay lazy" >&2
+    fi
+done
+
+exit 0

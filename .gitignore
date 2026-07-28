@@ -17,3 +17,6 @@
 .DS_Store
 *.swp
 .wrangler/
+
+# local build artifacts
+target/

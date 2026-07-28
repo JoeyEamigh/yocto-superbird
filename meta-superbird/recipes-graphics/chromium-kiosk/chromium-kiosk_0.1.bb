@@ -6,6 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = " \
     file://chromium-kiosk.service \
     file://chromium-kiosk-launch \
+    file://chromium-kiosk-durable-storage \
     file://kiosk.env \
 "
 S = "${UNPACKDIR}"
@@ -25,6 +26,8 @@ do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${S}/chromium-kiosk-launch \
         ${D}${bindir}/chromium-kiosk-launch
+    install -m 0755 ${S}/chromium-kiosk-durable-storage \
+        ${D}${bindir}/chromium-kiosk-durable-storage
 
     install -d ${D}${sysconfdir}/default
     install -m 0644 ${S}/kiosk.env \
@@ -40,6 +43,7 @@ do_install() {
 FILES:${PN} = " \
     ${systemd_system_unitdir}/chromium-kiosk.service \
     ${bindir}/chromium-kiosk-launch \
+    ${bindir}/chromium-kiosk-durable-storage \
     ${sysconfdir}/default/chromium-kiosk \
 "
 
