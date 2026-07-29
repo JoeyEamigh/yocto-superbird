@@ -3,39 +3,20 @@
 default := "bridgething"
 export KAS_CONTAINER_ENGINE := env_var_or_default('KAS_CONTAINER_ENGINE', 'docker')
 
-# kas-container calls `realpath` with GNU-only flags (-e, -qe, --relative-base)
-# that BSD /bin/realpath rejects. scripts/macos-shims/ carries a GNU-realpath
-# shim; prepend it on macOS so kas-container resolves `realpath` to grealpath.
-# Empty branch on Linux = PATH untouched.
+# kas-container calls `realpath` with GNU-only flags
 macos_shim_dir := if os() == "macos" { justfile_directory() / "scripts" / "macos-shims" } else { "" }
 export PATH := if macos_shim_dir == "" { env_var('PATH') } else { macos_shim_dir + ":" + env_var('PATH') }
 
-# macOS: the bitbake build tree lives in a Docker NAMED VOLUME, not on the Mac
-# filesystem. Bind-mounting a host dir is impossible - Docker Desktop's
-# libkrun/virtiofs fails every flock() bitbake relies on (confirmed 200/200 EIO)
-# and presents bind-mount roots as root:root. A named volume is real ext4 inside
-# the Docker VM: reliable, case-sensitive, persistent. Empty on Linux (the build
-# stays in the in-repo build/).
+# macOS: the bitbake build tree lives in a Docker NAMED VOLUME, not on the local filesystem
 build_vol := if os() == "macos" { "carthing-yocto" } else { "" }
 
 # Extra `docker run` args kas-container needs on macOS:
-#  - mount the build volume at /build (kas's entrypoint only chowns its known
-#    managed dirs - /build, /work, ... - so the volume MUST land on one of them);
-#  - KAS_DOCKER_ROOTLESS=1 triggers that in-container chown of the root-owned
-#    volume mount root, so bitbake's os.access(TOPDIR, W_OK) preflight passes for
-#    the non-root build user (the chown only touches the container's view, never
-#    host ownership);
-#  - TOPDIR=/build/build (not /build) so ccache's ${TOPDIR}/../ccache resolves to
-#    /build/ccache *inside* the writable volume - with TOPDIR=/build it escapes
-#    to /ccache on the container root and ccache dies "Permission denied". This
-#    mirrors Linux's /work/build TOPDIR + /work/ccache sibling exactly.
-# Empty on Linux.
+#  - mount the build volume at /build
+#  - KAS_DOCKER_ROOTLESS=1 triggers in-container chown of the root-owned volume mount
+#  - TOPDIR=/build/build so ccache's ${TOPDIR}/../ccache resolves to /build/ccache inside the writable volume
 macos_runtime_args := if os() == "macos" { "-e KAS_DOCKER_ROOTLESS=1 -e KAS_BUILD_DIR=/build/build -v " + build_vol + ":/build" } else { "" }
 
-# Host-side build dir. On Linux this IS the live build tree (override with
-# YOCTO_BUILD_DIR). On macOS the build tree is the named volume; this is only
-# where `just build` mirrors deploy artifacts (images/.swu/flashthing zips) out
-# of the volume so they land on the Mac disk for flashing/distribution.
+# Host-side build dir
 export KAS_BUILD_DIR := if os() == "macos" { "" } else { env_var_or_default('YOCTO_BUILD_DIR', '') }
 build_dir := if KAS_BUILD_DIR == "" { justfile_directory() / "build" } else { KAS_BUILD_DIR }
 
@@ -43,8 +24,7 @@ flashthing := env_var_or_default('FLASHTHING_CLI', 'flashthing-cli')
 
 # --- Build ---
 
-# One-time macOS host setup (idempotent): GNU coreutils (for the realpath shim)
-# + the Docker named volume that holds the build tree.
+# One-time macOS host setup (idempotent): GNU coreutils + the Docker named volume
 [macos]
 macos-setup:
   #!/usr/bin/env bash
@@ -112,9 +92,7 @@ shell target=default:
   fi
 
 # macOS only: mirror deploy artifacts (images, .swu, flashthing zips) out of the
-# build volume onto the Mac disk at build_dir/tmp/deploy, where `just flash`
-# looks. Plain file copies (no flock), so virtiofs handles them fine. Run
-# automatically by `just build`; also useful standalone.
+# build volume onto the Mac disk at build_dir/tmp/deploy
 [macos]
 pull-deploy:
   #!/usr/bin/env bash
@@ -182,11 +160,13 @@ flash-env image="bridgething-dev-image":
 
 # --- Release / install (no-build dev path) ---
 
-release *args:
-  scripts/superbird-release {{args}}
+# Pin the published daemon the image installs
+pin-daemon *args:
+  scripts/bridgething-pin-daemon {{args}}
 
-publish variant="prod":
-  scripts/superbird-publish {{variant}}
+# Pin the published webapps the image installs
+pin-webapps:
+  scripts/bridgething-pin-webapps
 
 # Pull latest dev image from ota manifest and flash it.
 install-dev:

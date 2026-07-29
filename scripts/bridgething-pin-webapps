@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PIN="$REPO_ROOT/meta-bridgething/recipes-core/bridgething-webapps/bridgething-webapps-pin.inc"
+
+OTA_BASE="${BRIDGETHING_OTA_BASE:-https://ota.bridgething.com}"
+APPS_BASE="${BRIDGETHING_APPS_BASE:-https://apps.bridgething.com}"
+CHANNEL="${BRIDGETHING_PIN_CHANNEL:-stable}"
+
+BUILTIN_WEBAPPS="hub browser"
+EXAMPLE_WEBAPPS="weather calendar home-assistant"
+
+log() { printf '\033[1;36m[pin-webapps]\033[0m %s\n' "$*" >&2; }
+die() { printf '\033[1;31m[pin-webapps] error:\033[0m %s\n' "$*" >&2; exit 1; }
+
+for cmd in curl jq shasum; do
+  command -v "$cmd" >/dev/null 2>&1 || die "missing $cmd"
+done
+
+WORK=$(mktemp -d -t bridgething-webapps-pin)
+trap 'rm -rf "$WORK"' EXIT
+
+curl -fsS "$OTA_BASE/manifest.json" >"$WORK/manifest.json" || die "could not fetch $OTA_BASE/manifest.json"
+curl -fsS "$APPS_BASE/catalog.json" >"$WORK/catalog.json" || die "could not fetch $APPS_BASE/catalog.json"
+
+LATEST=$(jq -r --arg ch "$CHANNEL" '.channels[$ch].latest // empty' "$WORK/manifest.json")
+[ -n "$LATEST" ] || die "no latest release on the $CHANNEL channel"
+
+URIS=""
+BUILTIN_PAIRS=""
+EXAMPLE_PAIRS=""
+CHECKSUMS=""
+
+fetch_and_hash() {
+  curl -fsS -o "$WORK/$2" "$1" || die "no artifact at $1"
+  shasum -a 256 "$WORK/$2" | awk '{print $1}'
+}
+
+for app in $BUILTIN_WEBAPPS; do
+  ver=$(jq -r --arg v "$LATEST" --arg a "$app" '.releases[$v].builtin_webapps[$a] // empty' "$WORK/manifest.json")
+  [ -n "$ver" ] || die "release $LATEST lists no builtin webapp '$app'"
+  file="bridgething-webapp-${app}-${ver}.zip"
+  url="$OTA_BASE/webapps/$CHANNEL/$app/$ver/$app.zip"
+  log "builtin $app $ver"
+  sha=$(fetch_and_hash "$url" "$file")
+  URIS="$URIS    ${url};name=${app};downloadfilename=${file};unpack=0 \\\\\n"
+  CHECKSUMS="${CHECKSUMS}SRC_URI[${app}.sha256sum] = \"${sha}\"\n"
+  BUILTIN_PAIRS="$BUILTIN_PAIRS${app}:${file} "
+done
+
+for app in $EXAMPLE_WEBAPPS; do
+  entry=$(jq -r --arg a "$app" '.apps[] | select((.name | ascii_downcase | gsub(" "; "-")) == $a)
+                                | [.id, .versions[0].version, .versions[0].download.url]
+                                | @tsv' "$WORK/catalog.json" | head -n1)
+  [ -n "$entry" ] || die "no catalog app whose name maps to the slug '$app'"
+  read -r _id ver url <<<"$entry"
+  file="bridgething-example-${app}-${ver}.zip"
+  log "example $app $ver"
+  sha=$(fetch_and_hash "$url" "$file")
+  URIS="$URIS    ${url};name=example-${app};downloadfilename=${file};unpack=0 \\\\\n"
+  CHECKSUMS="${CHECKSUMS}SRC_URI[example-${app}.sha256sum] = \"${sha}\"\n"
+  EXAMPLE_PAIRS="$EXAMPLE_PAIRS${app}:${file} "
+done
+
+{
+  printf 'BRIDGETHING_WEBAPPS_SRC_URI = "\\\n'
+  printf "%b" "$URIS"
+  printf '"\n\n'
+  printf "%b" "$CHECKSUMS"
+  printf '\n'
+  printf 'BRIDGETHING_BUILTIN_ZIPS = "%s"\n' "${BUILTIN_PAIRS% }"
+  printf 'BRIDGETHING_EXAMPLE_ZIPS = "%s"\n' "${EXAMPLE_PAIRS% }"
+} >"$PIN"
+
+log "pinned $(echo "$BUILTIN_WEBAPPS" | wc -w | tr -d ' ') builtin + $(echo "$EXAMPLE_WEBAPPS" | wc -w | tr -d ' ') example webapps from release $LATEST"
+log "$PIN"

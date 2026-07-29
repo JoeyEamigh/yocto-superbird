@@ -10,14 +10,6 @@
 #      back out of this file and bind-mounts it into the kas container.
 #   3. Build with `just build bridgething-local` (instead of the usual
 #      `just build` / `just build bridgething`).
-#
-# Mechanic: bitbake's externalsrc.bbclass replaces do_fetch/do_unpack
-# with "use this host path as ${S}". EXTERNALSRC_BUILD redirects cargo's
-# target/ into the bitbake workdir so target/ never lands inside your
-# bridgething working tree. EXTERNALSRC_SYMLINKS = "" stops externalsrc
-# from dropping oe-workdir / oe-logs symlinks into the source tree -
-# they'd point at container-internal paths and would just clutter
-# `git status` on the bridgething repo.
 
 header:
   version: 18
@@ -29,6 +21,9 @@ local_conf_header:
   externalsrc: |
     BRIDGETHING_LOCAL = "/path/to/your/bridgething"
 
+    BRIDGETHING_DAEMON_PROVISION = "source"
+    BRIDGETHING_WEBAPPS_PROVISION = "source"
+
     INHERIT += "externalsrc"
 
     EXTERNALSRC:pn-bridgething-daemon = "${BRIDGETHING_LOCAL}"
@@ -37,24 +32,15 @@ local_conf_header:
     EXTERNALSRC:pn-bridgething-webapps = "${BRIDGETHING_LOCAL}"
     EXTERNALSRC_BUILD:pn-bridgething-webapps = "${WORKDIR}/build"
 
-    EXTERNALSRC:pn-bridgething-mfi-proxy = "${BRIDGETHING_LOCAL}"
-    EXTERNALSRC_BUILD:pn-bridgething-mfi-proxy = "${WORKDIR}/build"
 
-    # externalsrc.bbclass still calls bb.fetch.get_hashvalue() against SRC_URI even
-    # though the actual build pulls from BRIDGETHING_LOCAL. Drop the github://
-    # fetch so a private repo or offline host doesn't block dev iteration; the
-    # local file:// entries kept by the recipe still resolve fine.
     SRC_URI:remove:pn-bridgething-daemon = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
     SRC_URI:remove:pn-bridgething-webapps = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
-    SRC_URI:remove:pn-bridgething-mfi-proxy = "git://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
     SRCREV:pn-bridgething-daemon = "INVALID"
     SRCREV:pn-bridgething-webapps = "INVALID"
-    SRCREV:pn-bridgething-mfi-proxy = "INVALID"
 
     EXTERNALSRC_SYMLINKS = ""
 
     CARGO_BUILD_FLAGS:append:pn-bridgething-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
-    CARGO_BUILD_FLAGS:append:pn-bridgething-mfi-proxy = " --config profile.release.lto=false --config profile.release.codegen-units=32"
 
 repos:
   yocto-superbird:

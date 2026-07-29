@@ -1,42 +1,54 @@
 SUMMARY = "Bridgething daemon"
-DESCRIPTION = "Bridgething Rust daemon, exposed at /opt/bridgething via opt-overlay@bridgething."
+DESCRIPTION = "Bridgething Rust daemon"
 HOMEPAGE = "https://github.com/JoeyEamigh/bridgething"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-inherit cargo systemd pkgconfig
+require bridgething-daemon-pin.inc
 
-# gitsm:// pulls the swupdate-sys vendored submodule; bindgen reads its headers at build time
-SRC_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP} \
-           file://bridgething.service \
-           file://bridgething-stock.socket \
-           file://bridgething-modern.socket \
-           file://bridgething.conf \
-           file://bridgething-rollback \
-           file://bridgething-rollback.service \
-           file://bridgething-adopt-daemon \
-           file://bridgething-dev.conf"
+PV = "${BRIDGETHING_DAEMON_VERSION}"
+
+BRIDGETHING_DAEMON_PROVISION ?= "prebuilt"
+BRIDGETHING_OTA_BASE ?= "https://ota.bridgething.com"
+
+DAEMON_URI = "${BRIDGETHING_OTA_BASE}/daemon/stable/${PV}/bridgething;name=daemon;downloadfilename=bridgething-${PV};unpack=0"
+DAEMON_GIT_URI = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+
+FROM_SOURCE = "${@'1' if d.getVar('BRIDGETHING_DAEMON_PROVISION') == 'source' else '0'}"
+
+inherit systemd pkgconfig
+inherit ${@'cargo' if d.getVar('BRIDGETHING_DAEMON_PROVISION') == 'source' else ''}
+
+SRC_URI = " \
+    ${@d.getVar('DAEMON_GIT_URI') if d.getVar('FROM_SOURCE') == '1' else d.getVar('DAEMON_URI')} \
+    file://bridgething.service \
+    file://bridgething-stock.socket \
+    file://bridgething-modern.socket \
+    file://bridgething.conf \
+    file://bridgething-rollback \
+    file://bridgething-rollback.service \
+    file://bridgething-adopt-daemon \
+    file://bridgething-dev.conf \
+"
+
+SRC_URI[daemon.sha256sum] = "${BRIDGETHING_DAEMON_SHA256}"
+
 SRCREV = "${AUTOREV}"
 
-# cargo fetches crates.io directly during do_compile. lift the network ban, stop bitbake
-# vendoring redirect, and drop --frozen (which implies --offline). --locked keeps Cargo.lock authoritative.
 do_compile[network] = "1"
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS:remove = "--frozen"
 
-# only the daemon from the workspace; superbird feature gates systemd + ALS + mic
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
-DEPENDS = "dbus swupdate systemd clang-native alsa-lib"
+DEPENDS = "dbus swupdate systemd alsa-lib"
+DEPENDS:append = "${@' clang-native' if d.getVar('FROM_SOURCE') == '1' else ''}"
 
-# bindgen runs on the build host; point libclang at the cross sysroot or it picks up host glibc headers
 export LIBCLANG_PATH = "${STAGING_LIBDIR_NATIVE}"
 export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
 
-# auto_generate_cdp would shell out to rustfmt, which isn't in the recipe sysroot
 export DO_NOT_FORMAT = "1"
 
-# rollback unit is OnFailure-pulled, never enabled
 SYSTEMD_SERVICE:${PN} = "bridgething.service bridgething-stock.socket bridgething-modern.socket"
 SYSTEMD_AUTO_ENABLE = "enable"
 
@@ -44,16 +56,23 @@ RDEPENDS:${PN} += "opt-overlay swupdate systemd"
 
 DAEMON_FLOOR_DIR = "${nonarch_libdir}/bridgething/daemon"
 
-# opt-overlay@bridgething bind-mount target. squashfs is ro, so the dir must exist in the
-# rootfs at install time; mkdir -p in the unit's ExecStartPre would fail to create /opt.
 OPT_OVERLAY_TARGET = "/opt/bridgething"
+
+DAEMON_BINARY = "${@d.getVar('B') + '/target/' + d.getVar('CARGO_TARGET_SUBDIR') + '/bridgething' if d.getVar('FROM_SOURCE') == '1' else d.getVar('UNPACKDIR') + '/bridgething-' + d.getVar('PV')}"
+
+python () {
+    if d.getVar('FROM_SOURCE') == '1':
+        return
+    d.delVar('SRCREV')
+    for task in ('do_configure', 'do_compile'):
+        d.setVarFlag(task, 'noexec', '1')
+}
 
 do_install() {
     install -d ${D}${OPT_OVERLAY_TARGET}
 
     install -d ${D}${DAEMON_FLOOR_DIR}
-    install -m 0755 ${B}/target/${CARGO_TARGET_SUBDIR}/bridgething \
-        ${D}${DAEMON_FLOOR_DIR}/bridgething.current
+    install -m 0755 ${DAEMON_BINARY} ${D}${DAEMON_FLOOR_DIR}/bridgething.current
 
     install -d ${D}${libexecdir}
     install -m 0755 ${UNPACKDIR}/bridgething-rollback \
@@ -98,5 +117,4 @@ FILES:${PN}-dev-config = "${systemd_system_unitdir}/bridgething.service.d/dev.co
 RDEPENDS:${PN}-dev-config = "${PN}"
 SUMMARY:${PN}-dev-config = "Bridgething daemon dev drop-in"
 
-# upstream Cargo.toml strips the binary; honor that instead of forcing yocto's strip pass
 INSANE_SKIP:${PN} += "already-stripped"
