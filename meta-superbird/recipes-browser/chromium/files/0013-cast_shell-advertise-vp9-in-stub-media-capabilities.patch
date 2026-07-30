@@ -1,0 +1,24 @@
+cast_shell: advertise VP9 in the stub media capabilities
+
+CastContentRendererClient::IsDecoderSupportedVideoType asks
+MediaCapabilitiesShlib::IsSupportedVideoConfig on every non-Android build,
+and that symbol resolves into libcast_media_1.0.so. With no vendor backend
+the shlib is cast_media_dummy.cc, which claims H.264 and VP8 only - so
+MediaSource.isTypeSupported rejects VP9 and players that offer nothing else
+fall back to a generic error.
+
+Upstream-Status: Inappropriate [depends on board-specific decoder set]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/media/cma/backend/cast_media_dummy.cc
++++ b/chromecast/media/cma/backend/cast_media_dummy.cc
+@@ -45,7 +45,7 @@
+ bool MediaCapabilitiesShlib::IsSupportedVideoConfig(VideoCodec codec,
+                                                     VideoProfile profile,
+                                                     int level) {
+-  return (codec == kCodecH264 || codec == kCodecVP8);
++  return (codec == kCodecH264 || codec == kCodecVP8 || codec == kCodecVP9);
+ }
+ 
+ bool MediaCapabilitiesShlib::IsSupportedAudioConfig(const AudioConfig& config) {

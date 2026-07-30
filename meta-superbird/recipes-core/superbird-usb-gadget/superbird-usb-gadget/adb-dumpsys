@@ -1,0 +1,13 @@
+#!/bin/sh
+
+case "$1" in
+    trust)
+        echo "deviceLocked=0"
+        ;;
+    user)
+        echo "Users:"
+        echo "  UserInfo{0:root:13} serialNo=0"
+        ;;
+esac
+
+exit 0

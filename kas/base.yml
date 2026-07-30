@@ -83,7 +83,7 @@ repos:
 local_conf_header:
   base: |
     INHERIT += "rm_work"
-    RM_WORK_EXCLUDE += "linux-superbird"
+    RM_WORK_EXCLUDE += "linux-superbird chromium-ozone-wayland"
     INHERIT += "ccache"
     CCACHE_TOP_DIR = "${TOPDIR}/../ccache"
     # Global IMAGE_FEATURES that both prod and dev want (per the

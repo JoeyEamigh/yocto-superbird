@@ -18,6 +18,13 @@
 #         loads and focus drives the compositor on-screen keyboard.
 #   0012: ProxyConfigServiceFixed from --proxy-server under the pref tracker; cast passes a
 #         nullptr base service and registers no proxy pref, so the switch is otherwise inert.
+#   0013: advertise VP9 (and drop unbuildable H.264) in the stub MediaCapabilitiesShlib, which
+#         is what the renderer asks whether a video type is playable.
+#   0014: point the cast test list at the real label for the v4l2 decode-accelerator test, which
+#         otherwise fails gn gen once use_v4l2_codec is on.
+#   0015: register OzoneImageBackingFactory unconditionally and check native-pixmap support per
+#         request, so a SharedImageFactory built before wayland's buffer manager is up can still
+#         back a NATIVE_PIXMAP. Without it no decoded video frame becomes a shared image at all.
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
@@ -43,26 +50,32 @@ SRC_URI:append = " \
     file://0010-cast_shell-enable-touch-input-in-CastServiceSimple.patch \
     file://0011-cast_shell-real-input-method-context-for-osk.patch \
     file://0012-cast_shell-honor-proxy-server-switch.patch \
+    file://0013-cast_shell-advertise-vp9-in-stub-media-capabilities.patch \
+    file://0014-cast_shell-fix-v4l2-decode-test-target-label.patch \
+    file://0015-cast_shell-register-OzoneImageBackingFactory-uncondit.patch \
 "
 
-# cast-shell PACKAGECONFIG: build cast_shell instead of chrome + chromedriver. trims the binary
-# and drops the gtk+3/nss/nspr/icon-theme stack from the rootfs.
 PACKAGECONFIG[cast-shell] = " \
     enable_cast_receiver=true \
     is_castos=true \
-    use_v4l2_codec=false \
+    enable_cast_renderer=false \
     enable_widevine=false \
     enable_pdf=false \
     enable_extensions=false \
     ,, \
     "
 
+GN_ARGS += 'mojo_media_services=["video_decoder"] mojo_media_host="gpu"'
+
+GN_ARGS += "enable_platform_ac3_eac3_audio=false enable_platform_mpeg_h_audio=false"
+GN_ARGS += "enable_platform_dolby_vision=false"
+
+
 python () {
     if 'cast-shell' in (d.getVar('PACKAGECONFIG') or '').split():
         d.setVar('CAST_SHELL_BUILD', '1')
 }
 
-# return 0 in a prepend block exits the combined task function, so upstream ninja never runs
 do_compile:prepend() {
     if [ "${CAST_SHELL_BUILD}" = "1" ]; then
         ninja -v ${PARALLEL_MAKE} cast_shell
@@ -103,10 +116,8 @@ do_install:prepend() {
     fi
 }
 
-# cast_shell doesn't link gtk/nss/nspr/icon-theme; drop the chrome-bundle RDEPENDS
 RDEPENDS:${PN}:remove = "${@bb.utils.contains('PACKAGECONFIG', 'cast-shell', 'gtk+3 gdk-pixbuf hicolor-icon-theme desktop-file-utils at-spi2-core nss nspr adwaita-icon-theme-symbolic', '', d)}"
 
-# no chromedriver in the cast variant; drop the empty subpackage to keep QA quiet
 PACKAGES:remove = "${@bb.utils.contains('PACKAGECONFIG', 'cast-shell', '${PN}-chromedriver', '', d)}"
 
 do_replace_bundled_rust_tools () {

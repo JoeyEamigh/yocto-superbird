@@ -30,7 +30,10 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0014-drm-panfrost-drop-noisy-Purging-bytes-shrinker-print.patch \
            file://0015-Input-rotary-encoder-settle-filtered-decode.patch \
            file://0016-irqchip-meson-gpio-enable-input-glitch-filter.patch \
-           file://0017-drm-meson-disable-afbc-scanout-on-superbird.patch"
+           file://0017-drm-meson-disable-afbc-scanout-on-superbird.patch \
+           file://0018-media-meson-vdec-implement-VIDIOC_G_SELECTION-on-the.patch \
+           file://0019-media-meson-vdec-support-single-planar-NV12-on-the-CA.patch \
+           file://0020-media-meson-vdec-support-single-planar-NV12-for-VP9.patch"
 
 inherit kernel
 

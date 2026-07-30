@@ -110,6 +110,23 @@
 # Audio API for visualizations still need an unsuspended
 # AudioContext.
 #
+# --disable-audio-output is load-bearing, not a testing flag. cast_shell
+# links the stub libcast_media_1.0.so, whose CreateMediaPipelineBackend
+# returns nullptr; the DCHECK guarding it compiles out in release, so the
+# first CreateAudioDecoder dereferences null and the browser takes a SEGV.
+# The switch makes CreateAudioManager hand back a FakeAudioManager so no
+# output stream is ever built. Nothing is lost: the DT disables the whole
+# TDM-B playback leg because the Car Thing has no speaker and those pads
+# are the preset buttons, so ALSA exposes capture devices only. Combined
+# with the autoplay policy above, without this any page carrying audio
+# kills the kiosk on load.
+#
+# --enable-features=AcceleratedVideoDecoder routes video to meson-vdec through chromium's V4L2
+# stateful decoder. The switch is all-or-nothing across codecs, so every codec the driver claims
+# has to work: it needs chromium patch 0015, without which no decoded frame becomes a shared image
+# and the lost GL context blacks the panel, plus kernel 0018 for the visible rect and 0019/0020 so
+# H.264 and VP9 both advertise a capture format chromium considers renderable.
+#
 # Egress. KIOSK_PROXY_SERVER (bridgething uses socks5://127.0.0.1:1080 to
 # tunnel webapp traffic over the companion phone) routes every byte
 # chromium initiates; localhost stays DIRECT via the network stack's
@@ -176,7 +193,6 @@ if [ -r /etc/default/chromium-kiosk ]; then
     # shellcheck disable=SC1091
     . /etc/default/chromium-kiosk
 fi
-# vendor opt-overlay env file (path optional; absent file is fine).
 if [ -n "${KIOSK_ENV_OVERRIDE_FILE:-}" ] && [ -r "$KIOSK_ENV_OVERRIDE_FILE" ]; then
     # shellcheck disable=SC1090
     . "$KIOSK_ENV_OVERRIDE_FILE"
@@ -223,6 +239,8 @@ exec ./chromium-bin \
     --disable-low-end-device-mode \
     --enable-zero-copy \
     --autoplay-policy=no-user-gesture-required \
+    --disable-audio-output \
+    --enable-features=AcceleratedVideoDecoder \
     --js-flags="--max-old-space-size=192 --max-semi-space-size=16" \
     --disable-features=Translate,BackForwardCache,GlobalMediaControls,InterestFeedContentSuggestions,MediaRouter,MediaSessionService,OptimizationHints,OptimizationGuideModelDownloading,DialMediaRouteProvider,CalculateNativeWinOcclusion,AutofillServerCommunication,SafeBrowsing,NetworkTimeServiceQuerying,DnsOverHttps,FedCm,AcceptCHFrame,Reporting,OverscrollHistoryNavigation \
     ${PROXY_SERVER_FLAG} \

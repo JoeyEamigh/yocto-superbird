@@ -1,0 +1,24 @@
+cast_shell: fix the label for the v4l2 decode-accelerator test target
+
+The cast test list reaches for //media/gpu:video_decode_accelerator_tests,
+but that test is declared in media/gpu/test/BUILD.gn, so the label it wants
+is //media/gpu/test:video_decode_accelerator_tests - which is exactly what
+the root BUILD.gn uses for the same target. gn resolves the whole build
+graph even when only cast_shell is being built, so the stale label fails
+`gn gen` outright with "Unresolved dependencies" and nothing compiles.
+
+Upstream-Status: Pending
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/chromecast/BUILD.gn
++++ b/chromecast/BUILD.gn
+@@ -116,7 +116,7 @@
+   }
+ 
+   if (use_v4l2_codec) {
+-    tests += [ "//media/gpu:video_decode_accelerator_tests" ]
++    tests += [ "//media/gpu/test:video_decode_accelerator_tests" ]
+   }
+ 
+   if (is_linux) {

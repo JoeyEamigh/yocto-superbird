@@ -168,6 +168,10 @@ pin-daemon *args:
 pin-webapps:
   scripts/bridgething-pin-webapps
 
+# Pin the published wake-word runtime and phrase model the image installs
+pin-wakeword *args:
+  scripts/bridgething-pin-wakeword {{args}}
+
 # Pull latest dev image from ota manifest and flash it.
 install-dev:
   scripts/superbird-install dev

@@ -9,6 +9,9 @@ SRC_URI = "\
     file://90-usb-ncm-fallback.network \
     file://adbd-superbird.conf \
     file://usb-debugging-enabled \
+    file://adb-getprop \
+    file://adb-wm \
+    file://adb-dumpsys \
 "
 
 S = "${UNPACKDIR}"
@@ -22,7 +25,6 @@ do_install() {
     install -d ${D}${libexecdir}
     install -m 0755 ${S}/superbird-usb-gadget.sh ${D}${libexecdir}/superbird-usb-gadget
 
-    # bake distro knob values into the shell script (configfs paths + USB descriptor strings + hostname prefix).
     sed -i \
         -e 's|@@USB_GADGET_NAME@@|${SUPERBIRD_USB_GADGET_NAME}|g' \
         -e 's|@@USB_MANUFACTURER@@|${SUPERBIRD_USB_GADGET_MANUFACTURER}|g' \
@@ -33,10 +35,6 @@ do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${S}/superbird-usb-gadget.service ${D}${systemd_system_unitdir}/
 
-    # fallback applies only if the gadget script's per-serial /run/systemd/network/11-usb-ncm.network
-    # was not generated (boot before the script ran, or the script was disabled). lower-numbered
-    # files win first-match, so the per-serial 11- file wins when present, and this 90- file
-    # provides a single-device default otherwise.
     install -d ${D}${sysconfdir}/systemd/network
     install -m 0644 ${S}/90-usb-ncm-fallback.network ${D}${sysconfdir}/systemd/network/
 
@@ -47,6 +45,16 @@ do_install() {
     sed -i \
         -e 's|@@USB_GADGET_NAME@@|${SUPERBIRD_USB_GADGET_NAME}|g' \
         ${D}${systemd_system_unitdir}/android-tools-adbd.service.d/superbird.conf
+
+    install -d ${D}${bindir}
+    install -m 0755 ${S}/adb-getprop ${D}${bindir}/getprop
+    install -m 0755 ${S}/adb-wm      ${D}${bindir}/wm
+    install -m 0755 ${S}/adb-dumpsys ${D}${bindir}/dumpsys
+    sed -i \
+        -e 's|@@USB_PRODUCT@@|${SUPERBIRD_USB_GADGET_PRODUCT}|g' \
+        -e 's|@@USB_MANUFACTURER@@|${SUPERBIRD_USB_GADGET_MANUFACTURER}|g' \
+        -e 's|@@HOSTNAME@@|${SUPERBIRD_HOSTNAME}|g' \
+        ${D}${bindir}/getprop
 
     # ConditionPathExists gate; remove the file on-device to disable adbd at boot
     install -d ${D}${sysconfdir}
@@ -59,6 +67,9 @@ FILES:${PN} = "\
     ${systemd_system_unitdir}/android-tools-adbd.service.d/superbird.conf \
     ${sysconfdir}/systemd/network/90-usb-ncm-fallback.network \
     ${sysconfdir}/usb-debugging-enabled \
+    ${bindir}/getprop \
+    ${bindir}/wm \
+    ${bindir}/dumpsys \
 "
 
 RDEPENDS:${PN} = "bash android-tools-adbd"

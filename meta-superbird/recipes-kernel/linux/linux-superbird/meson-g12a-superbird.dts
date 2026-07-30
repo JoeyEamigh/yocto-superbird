@@ -62,6 +62,16 @@
 	 * requests it. With no consumer wired in mainline meson_drv, the
 	 * pool sits idle and nothing overwrites the splash pixels. */
 	reserved-memory {
+		/* meson-g12-common.dtsi asks for 256 MiB, which cannot be placed on a 512 MiB board once the
+		 * secure-monitor carveouts and the splash framebuffer are out, so the reservation fails and CMA
+		 * silently falls back to CONFIG_CMA_SIZE_MBYTES. 32 MiB cannot hold one decode session: the vdec
+		 * VIFIFO alone is 16 MiB, a VP9 workspace is 28.6 MiB, and a client's coded-input buffers are
+		 * another 32 MiB. 128 MiB fits all of that with slack for fragmentation, and CMA lends its free
+		 * pages to movable allocations, so this is not subtracted from usable RAM. */
+		linux,cma {
+			size = <0x0 0x8000000>;
+		};
+
 		logo_reserved: framebuffer@1f800000 {
 			/* no-map removes this range from the kernel's normal
 			 * RAM map entirely. The OSD scanner is hardware and

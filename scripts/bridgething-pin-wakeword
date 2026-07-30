@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PIN="$REPO_ROOT/meta-bridgething/recipes-core/bridgething-wakeword/bridgething-wakeword-pin.inc"
+
+OTA_BASE="${BRIDGETHING_OTA_BASE:-https://ota.bridgething.com}"
+CHANNEL="${BRIDGETHING_PIN_CHANNEL:-stable}"
+
+log() { printf '\033[1;36m[pin-wakeword]\033[0m %s\n' "$*" >&2; }
+die() { printf '\033[1;31m[pin-wakeword] error:\033[0m %s\n' "$*" >&2; exit 1; }
+
+for cmd in curl jq shasum; do
+  command -v "$cmd" >/dev/null 2>&1 || die "missing $cmd"
+done
+[ -f "$PIN" ] || die "no pin file at $PIN"
+
+WORK=$(mktemp -d -t bridgething-wakeword-pin)
+trap 'rm -rf "$WORK"' EXIT
+
+curl -fsS "$OTA_BASE/manifest.json" >"$WORK/manifest.json" \
+  || die "could not fetch $OTA_BASE/manifest.json"
+
+LATEST=$(jq -r --arg ch "$CHANNEL" '.channels[$ch].latest // empty' "$WORK/manifest.json")
+[ -n "$LATEST" ] || die "no latest release on the $CHANNEL channel"
+
+RUNTIME_VERSION="${1:-$(jq -r --arg v "$LATEST" '.releases[$v].wakeword.runtime // empty' "$WORK/manifest.json")}"
+MODEL_VERSION="${2:-$(jq -r --arg v "$LATEST" '.releases[$v].wakeword.model // empty' "$WORK/manifest.json")}"
+[ -n "$RUNTIME_VERSION" ] || die "release $LATEST declares no wakeword.runtime; publish one before pinning to it"
+[ -n "$MODEL_VERSION" ] || die "release $LATEST declares no wakeword.model; publish one before pinning to it"
+
+RUNTIME_URL="$OTA_BASE/wakeword/$CHANNEL/runtime/$RUNTIME_VERSION/wakeword-runtime.tar.gz"
+MODEL_URL="$OTA_BASE/wakeword/$CHANNEL/model/$MODEL_VERSION/hey_bridgething.onnx"
+
+fetch_and_hash() {
+  curl -fsS -o "$WORK/$2" "$1" || die "no artifact at $1"
+  shasum -a 256 "$WORK/$2" | awk '{print $1}'
+}
+
+log "runtime $RUNTIME_VERSION"
+RUNTIME_SHA=$(fetch_and_hash "$RUNTIME_URL" runtime.tar.gz)
+log "model $MODEL_VERSION"
+MODEL_SHA=$(fetch_and_hash "$MODEL_URL" model.onnx)
+
+TRAINED_AGAINST=$(jq -r --arg v "$MODEL_VERSION" \
+  '.releases[].wakeword.model_trained_against[$v] // empty' "$WORK/manifest.json" | head -n1)
+if [ -n "$TRAINED_AGAINST" ] && [ "$TRAINED_AGAINST" != "$RUNTIME_VERSION" ]; then
+  die "model $MODEL_VERSION was trained against runtime $TRAINED_AGAINST, not $RUNTIME_VERSION;
+     pin that runtime or republish the model"
+fi
+
+for pair in "runtime:RUNTIME:$RUNTIME_SHA" "model:MODEL:$MODEL_SHA"; do
+  what=${pair%%:*}; rest=${pair#*:}; var=${rest%%:*}; sha=${rest#*:}
+  declared=$(jq -r --arg v "$LATEST" --arg w "$what" \
+    '.releases[$v].artifacts.wakeword[$w].sha256 // empty' "$WORK/manifest.json")
+  if [ -n "$declared" ] && [ "$declared" != "$sha" ]; then
+    log "WARNING: manifest declares ${declared:0:12} for wakeword $what but R2 serves ${sha:0:12}."
+    log "         pinning what R2 serves. repair the manifest before cutting this image."
+  fi
+  unset var
+done
+
+OLD_RUNTIME=$(sed -n 's/^BRIDGETHING_WAKEWORD_RUNTIME_VERSION = "\([^"]*\)".*/\1/p' "$PIN")
+OLD_MODEL=$(sed -n 's/^BRIDGETHING_WAKEWORD_MODEL_VERSION = "\([^"]*\)".*/\1/p' "$PIN")
+
+sed -i.bak \
+  -e "s|^BRIDGETHING_WAKEWORD_RUNTIME_VERSION = \".*\"|BRIDGETHING_WAKEWORD_RUNTIME_VERSION = \"$RUNTIME_VERSION\"|" \
+  -e "s|^BRIDGETHING_WAKEWORD_RUNTIME_SHA256 = \".*\"|BRIDGETHING_WAKEWORD_RUNTIME_SHA256 = \"$RUNTIME_SHA\"|" \
+  -e "s|^BRIDGETHING_WAKEWORD_MODEL_VERSION = \".*\"|BRIDGETHING_WAKEWORD_MODEL_VERSION = \"$MODEL_VERSION\"|" \
+  -e "s|^BRIDGETHING_WAKEWORD_MODEL_SHA256 = \".*\"|BRIDGETHING_WAKEWORD_MODEL_SHA256 = \"$MODEL_SHA\"|" \
+  "$PIN"
+rm -f "$PIN.bak"
+
+log "pinned runtime ${OLD_RUNTIME:-none} -> $RUNTIME_VERSION (${RUNTIME_SHA:0:12})"
+log "pinned model   ${OLD_MODEL:-none} -> $MODEL_VERSION (${MODEL_SHA:0:12})"
+log "$PIN"

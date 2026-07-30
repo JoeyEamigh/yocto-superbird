@@ -1,0 +1,5 @@
+#!/bin/sh
+
+[ "$1" = "size" ] && echo "Physical size: 800x480"
+
+exit 0

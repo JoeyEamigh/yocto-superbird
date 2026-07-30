@@ -1,0 +1,107 @@
+From 5da1e4c256c8ed859f6bd6647ab478e5931e1d8d Mon Sep 17 00:00:00 2001
+From: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+Date: Thu, 30 Jul 2026 00:20:00 -0400
+Subject: [PATCH] cast_shell: register OzoneImageBackingFactory unconditionally
+
+No decoded video frame can become a shared image on this board. Every
+request fails with
+
+  Could not find SharedImageBackingFactory with params: usage:
+  Gles2Read|RasterRead|DisplayRead, format: ..., gmb_type: platform
+
+for any format: zero-copy NV12 and a LibYUV conversion to BGRA_8888 fail
+identically, so it is the NATIVE_PIXMAP buffer type that has no backing,
+not the pixel format and not the external sampler.
+
+OzoneImageBackingFactory is the only factory that serves those, and it is
+registered only if GetPlatformRuntimeProperties().supports_native_pixmaps
+is true when SharedImageFactory is constructed. On Wayland that property
+resolves to WaylandSurfaceFactory::SupportsNativePixmaps(), which reports
+a gbm device only once WaylandBufferManagerGpu has been initialized by the
+host: WaylandBufferManagerGpu::GetGbmDevice() returns null while
+supports_dmabuf_ is unset, and Initialize() assigns it afterwards. A
+SharedImageFactory built before that point reads false once and then has
+no NATIVE_PIXMAP backing for the life of the process, while gbm comes up
+normally and every other consumer of it works - which is why the
+compositor presents through GbmSurfacelessWayland while video cannot
+allocate anything.
+
+Register the factory unconditionally and move the property check into
+IsSupported(), where it is read per request and the answer is meaningful.
+Name the gate on the remaining NATIVE_PIXMAP rejection paths so a future
+failure of this shape says which check refused rather than only that no
+factory was found.
+
+Upstream-Status: Inappropriate [bridgething-specific bring-up]
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+---
+ .../shared_image/ozone_image_backing_factory.cc  | 16 ++++++++++++++++
+ .../service/shared_image/shared_image_factory.cc | 13 ++++++++++---
+ 2 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+index 64c44ea..4babc23 100644
+--- a/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
++++ b/gpu/command_buffer/service/shared_image/ozone_image_backing_factory.cc
+@@ -281,6 +281,16 @@ bool OzoneImageBackingFactory::IsSupported(
+     return false;
+   }
+ 
++  // Read per request rather than once at factory construction, when the Ozone
++  // platform may not yet be able to answer. See the registration site.
++  if (!ui::OzonePlatform::GetInstance()
++           ->GetPlatformRuntimeProperties()
++           .supports_native_pixmaps) {
++    LOG_IF(ERROR, gmb_type == gfx::NATIVE_PIXMAP)
++        << "OzoneImageBackingFactory: no native pixmap support reported";
++    return false;
++  }
++
+   if (usage.Has(SHARED_IMAGE_USAGE_CPU_WRITE_ONLY) &&
+       gmb_type != gfx::NATIVE_PIXMAP) {
+     // Only CPU writable when the client provides a NativePixmap.
+@@ -304,11 +314,17 @@ bool OzoneImageBackingFactory::IsSupported(
+   }
+   auto* factory = ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
+   if (!factory->CanCreateNativePixmapForFormat(format)) {
++    LOG_IF(ERROR, gmb_type == gfx::NATIVE_PIXMAP)
++        << "OzoneImageBackingFactory: cannot create native pixmap for "
++        << format.ToString();
+     return false;
+   }
+ 
+   ui::GLOzone* gl_ozone = factory->GetCurrentGLOzone();
+   if (used_by_gl && (!gl_ozone || !gl_ozone->CanImportNativePixmap(format))) {
++    LOG_IF(ERROR, gmb_type == gfx::NATIVE_PIXMAP)
++        << "OzoneImageBackingFactory: cannot import native pixmap for "
++        << format.ToString() << ", gl_ozone: " << !!gl_ozone;
+     return false;
+   }
+ 
+diff --git a/gpu/command_buffer/service/shared_image/shared_image_factory.cc b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+index 217472b..556f072 100644
+--- a/gpu/command_buffer/service/shared_image/shared_image_factory.cc
++++ b/gpu/command_buffer/service/shared_image/shared_image_factory.cc
+@@ -301,9 +301,16 @@ SharedImageFactory::SharedImageFactory(
+   }
+ #elif BUILDFLAG(IS_OZONE)
+   // For all Ozone platforms - Desktop Linux, ChromeOS, Fuchsia, CastOS.
+-  if (ui::OzonePlatform::GetInstance()
+-          ->GetPlatformRuntimeProperties()
+-          .supports_native_pixmaps) {
++  //
++  // supports_native_pixmaps is not settled at construction time. On Wayland it
++  // resolves to WaylandSurfaceFactory::SupportsNativePixmaps(), which needs the
++  // gpu-side WaylandBufferManagerGpu to have been initialized by the host
++  // before it can report a gbm device. A SharedImageFactory built before that
++  // reads false and then has no backing for any NATIVE_PIXMAP shared image for
++  // the rest of the process, long after gbm is up and every other consumer of
++  // it works. Register unconditionally and let IsSupported() read the property
++  // per request, when it is meaningful.
++  {
+     auto ozone_factory = std::make_unique<OzoneImageBackingFactory>(
+         context_state_, workarounds_);
+     factories_.push_back(std::move(ozone_factory));
+-- 
+2.53.0
+

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+case "$1" in
+    ro.product.model)        echo "@@USB_PRODUCT@@" ;;
+    ro.product.manufacturer) echo "@@USB_MANUFACTURER@@" ;;
+    ro.product.name)         echo "@@HOSTNAME@@" ;;
+    ro.product.device)       echo "@@HOSTNAME@@" ;;
+esac
+
+exit 0
