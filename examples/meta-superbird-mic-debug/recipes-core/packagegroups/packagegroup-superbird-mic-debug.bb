@@ -1,5 +1,5 @@
-SUMMARY = "Bridgething core runtime"
-DESCRIPTION = "Bridgething daemon + hub + stock + weston/chromium stack, on top of packagegroup-superbird-runtime."
+SUMMARY = "Superbird mic debug runtime"
+DESCRIPTION = "BSP runtime + graphics + chromium kiosk + the recorder, plus USB host class drivers"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
@@ -7,14 +7,19 @@ inherit packagegroup
 
 PACKAGES = "${PN}"
 
+USB_HOST_MODULES = " \
+    kernel-module-scsi-mod \
+    kernel-module-sd-mod \
+    kernel-module-usb-storage \
+    kernel-module-uas \
+    kernel-module-exfat \
+"
+
 RDEPENDS:${PN} = " \
     packagegroup-superbird-runtime \
     \
-    bridgething-daemon \
-    bridgething-stock-webapp \
-    bridgething-webapps \
-    bridgething-wakeword-model \
-    bridgething-ab \
+    mic-debug-daemon \
+    ${USB_HOST_MODULES} \
     \
     mesa \
     weston \
@@ -24,5 +29,4 @@ RDEPENDS:${PN} = " \
     \
     chromium-ozone-wayland \
     chromium-kiosk \
-    kiosk-cdp-proxy \
 "

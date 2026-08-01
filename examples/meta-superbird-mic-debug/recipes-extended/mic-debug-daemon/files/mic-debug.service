@@ -1,0 +1,16 @@
+[Unit]
+Description=Microphone array recorder
+After=local-fs.target
+Wants=superbird-usb-role.service
+After=superbird-usb-role.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mic-debug
+Restart=always
+RestartSec=2
+MountFlags=shared
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

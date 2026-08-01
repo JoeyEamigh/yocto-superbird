@@ -52,18 +52,20 @@ build target=default:
   elif [ -n "${KAS_BUILD_DIR:-}" ]; then
     mkdir -p "$KAS_BUILD_DIR"
   fi
-  if [ "{{target}}" = "bridgething-local" ]; then
-    if [ ! -f kas/bridgething-local.yml ]; then
-      echo "kas/bridgething-local.yml missing - copy kas/bridgething-local.example.yml and edit BRIDGETHING_LOCAL" >&2
-      exit 1
-    fi
-    local_dir=$(sed -n 's/.*BRIDGETHING_LOCAL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' kas/bridgething-local.yml | head -n1)
-    if [ -z "$local_dir" ] || [ ! -d "$local_dir" ]; then
-      echo "BRIDGETHING_LOCAL in kas/bridgething-local.yml is missing or not a directory: '$local_dir'" >&2
-      exit 1
-    fi
-    runtime_args="$runtime_args -v $local_dir:$local_dir"
-  fi
+  case "{{target}}" in
+    *-local)
+      if [ ! -f kas/{{target}}.yml ]; then
+        echo "kas/{{target}}.yml missing - copy kas/{{target}}.example.yml and edit BRIDGETHING_LOCAL" >&2
+        exit 1
+      fi
+      local_dir=$(sed -n 's/.*BRIDGETHING_LOCAL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' kas/{{target}}.yml | head -n1)
+      if [ -z "$local_dir" ] || [ ! -d "$local_dir" ]; then
+        echo "BRIDGETHING_LOCAL in kas/{{target}}.yml is missing or not a directory: '$local_dir'" >&2
+        exit 1
+      fi
+      runtime_args="$runtime_args -v $local_dir:$local_dir"
+      ;;
+  esac
   # Opt-in (YOCTO_LOWMEM=1): layer the memory-bounded parallelism knobs over the
   # build config. Off by default - full parallelism builds fine on a 48 GB VM.
   kas_files="kas/{{target}}.yml"
@@ -181,9 +183,9 @@ install-prod:
 
 # --- Device helpers ---
 
-# SSH into the device over USB-CDC-NCM. Splits args - watch out for quoting
+# SSH into the device over USB-CDC-NCM
 ssh *args:
-  scripts/superbird-ssh {{args}}
+  scripts/superbird-ssh {{quote(args)}}
 
 # UART console agent. Subcommand: start | stop | restart | status.
 console subcmd="status":

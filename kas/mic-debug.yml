@@ -1,0 +1,17 @@
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/superbird.yml
+
+distro: superbird-mic-debug
+
+target:
+  - superbird-mic-debug-image
+
+repos:
+  yocto-superbird:
+    path: .
+    layers:
+      meta-superbird:
+      examples/meta-superbird-mic-debug:

@@ -1,0 +1,27 @@
+header:
+  version: 18
+  includes:
+    - repo: yocto-superbird
+      file: kas/mic-debug.yml
+
+local_conf_header:
+  externalsrc: |
+    BRIDGETHING_LOCAL = "/path/to/your/bridgething"
+
+    INHERIT += "externalsrc"
+
+    EXTERNALSRC:pn-mic-debug-daemon = "${BRIDGETHING_LOCAL}"
+    EXTERNALSRC_BUILD:pn-mic-debug-daemon = "${WORKDIR}/build"
+    EXTERNALSRC_SYMLINKS = ""
+
+    SRC_URI:remove:pn-mic-debug-daemon = "gitsm://github.com/JoeyEamigh/bridgething.git;protocol=https;branch=main;destsuffix=${BP}"
+    SRCREV:pn-mic-debug-daemon = "INVALID"
+
+    CARGO_BUILD_FLAGS:append:pn-mic-debug-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
+
+repos:
+  yocto-superbird:
+    path: .
+    layers:
+      meta-superbird:
+      examples/meta-superbird-mic-debug:
