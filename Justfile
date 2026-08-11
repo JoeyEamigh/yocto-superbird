@@ -93,8 +93,7 @@ shell target=default:
     kas-container shell "$kas_files"
   fi
 
-# macOS only: mirror deploy artifacts (images, .swu, flashthing zips) out of the
-# build volume onto the Mac disk at build_dir/tmp/deploy
+# macOS only: mirror deploy artifacts (images, .swu, flashthing zips) out of the build volume onto the Mac disk at build_dir/tmp/deploy
 [macos]
 pull-deploy:
   #!/usr/bin/env bash
@@ -127,6 +126,20 @@ vscode-setup:
   ln -sfn openembedded-core/meta sources/meta
   ln -sfn meta-yocto/meta-poky   sources/meta-poky
   @echo "symlinks ready: sources/{meta,meta-poky}"
+
+# --- Tests ---
+
+# Drive the on-device shell scripts against scratch trees
+test-scripts:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  scripts/test-adopt-daemon
+  if docker info >/dev/null 2>&1; then
+    echo "--- busybox 1.37.0 ---"
+    docker run --rm -v "$PWD:/w:ro" -w /w busybox:1.37.0 sh scripts/test-adopt-daemon
+  else
+    echo "docker is down; skipped the busybox pass" >&2
+  fi
 
 # --- Cache server ---
 

@@ -42,7 +42,7 @@ CARGO_BUILD_FLAGS:remove = "--frozen"
 CARGO_BUILD_FLAGS:append = " -p bridgething --no-default-features --features superbird --locked"
 
 DEPENDS = "dbus swupdate systemd alsa-lib"
-DEPENDS:append = "${@' clang-native' if d.getVar('FROM_SOURCE') == '1' else ''}"
+DEPENDS:append = "${@' clang-native cmake-native' if d.getVar('FROM_SOURCE') == '1' else ''}"
 
 export LIBCLANG_PATH = "${STAGING_LIBDIR_NATIVE}"
 export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
@@ -73,6 +73,8 @@ do_install() {
 
     install -d ${D}${DAEMON_FLOOR_DIR}
     install -m 0755 ${DAEMON_BINARY} ${D}${DAEMON_FLOOR_DIR}/bridgething.current
+    echo "${PV}" > ${D}${DAEMON_FLOOR_DIR}/.factory-version
+    chmod 0644 ${D}${DAEMON_FLOOR_DIR}/.factory-version
 
     install -d ${D}${libexecdir}
     install -m 0755 ${UNPACKDIR}/bridgething-rollback \
@@ -104,6 +106,7 @@ PACKAGES =+ "${PN}-dev-config"
 FILES:${PN} = " \
     ${OPT_OVERLAY_TARGET} \
     ${DAEMON_FLOOR_DIR}/bridgething.current \
+    ${DAEMON_FLOOR_DIR}/.factory-version \
     ${libexecdir}/bridgething-rollback \
     ${libexecdir}/bridgething-adopt-daemon \
     ${systemd_system_unitdir}/bridgething.service \

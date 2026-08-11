@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PIN="$REPO_ROOT/meta-bridgething/recipes-core/bridgething-webapps/bridgething-webapps-pin.inc"
+STOCK_PIN="$REPO_ROOT/meta-bridgething/recipes-core/bridgething-stock-webapp/bridgething-stock-webapp-pin.inc"
 
 OTA_BASE="${BRIDGETHING_OTA_BASE:-https://ota.bridgething.com}"
 APPS_BASE="${BRIDGETHING_APPS_BASE:-https://apps.bridgething.com}"
@@ -74,5 +75,15 @@ done
   printf 'BRIDGETHING_EXAMPLE_ZIPS = "%s"\n' "${EXAMPLE_PAIRS% }"
 } >"$PIN"
 
-log "pinned $(echo "$BUILTIN_WEBAPPS" | wc -w | tr -d ' ') builtin + $(echo "$EXAMPLE_WEBAPPS" | wc -w | tr -d ' ') example webapps from release $LATEST"
+stock_ver=$(jq -r --arg v "$LATEST" '.releases[$v].builtin_webapps.stock // empty' "$WORK/manifest.json")
+[ -n "$stock_ver" ] || die "release $LATEST lists no builtin webapp 'stock'"
+log "builtin stock $stock_ver"
+stock_sha=$(fetch_and_hash "$OTA_BASE/webapps/$CHANNEL/stock/$stock_ver/stock.zip" "stock-$stock_ver.zip")
+{
+  printf 'BRIDGETHING_STOCK_WEBAPP_VERSION = "%s"\n' "$stock_ver"
+  printf 'BRIDGETHING_STOCK_WEBAPP_SHA256 = "%s"\n' "$stock_sha"
+} >"$STOCK_PIN"
+
+log "pinned $(echo "$BUILTIN_WEBAPPS" | wc -w | tr -d ' ') builtin + stock + $(echo "$EXAMPLE_WEBAPPS" | wc -w | tr -d ' ') example webapps from release $LATEST"
 log "$PIN"
+log "$STOCK_PIN"

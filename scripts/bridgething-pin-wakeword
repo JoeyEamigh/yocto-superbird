@@ -41,11 +41,25 @@ if [ -n "$declared" ] && [ "$declared" != "$MODEL_SHA" ]; then
   log "         pinning what R2 serves. repair the manifest before cutting this image."
 fi
 
+RUNTIME=$(curl -fsS "$OTA_BASE/wakeword/$CHANNEL/model/$MODEL_VERSION/release.json" 2>/dev/null \
+  | jq -r '.runtime // empty' || true)
+if [ -z "$RUNTIME" ]; then
+  RUNTIME=$(jq -r --arg v "$LATEST" --arg m "$MODEL_VERSION" \
+    '.releases[$v].wakeword.model_trained_against[$m] // empty' "$WORK/manifest.json")
+fi
+if [ -n "$RUNTIME" ]; then
+  log "trained against runtime $RUNTIME"
+else
+  log "WARNING: no runtime recorded for model $MODEL_VERSION."
+  log "         the image cannot declare a wakeword block until one is; republish the model."
+fi
+
 OLD_MODEL=$(sed -n 's/^BRIDGETHING_WAKEWORD_MODEL_VERSION = "\([^"]*\)".*/\1/p' "$PIN")
 
 sed -i.bak \
   -e "s|^BRIDGETHING_WAKEWORD_MODEL_VERSION = \".*\"|BRIDGETHING_WAKEWORD_MODEL_VERSION = \"$MODEL_VERSION\"|" \
   -e "s|^BRIDGETHING_WAKEWORD_MODEL_SHA256 = \".*\"|BRIDGETHING_WAKEWORD_MODEL_SHA256 = \"$MODEL_SHA\"|" \
+  -e "s|^BRIDGETHING_WAKEWORD_MODEL_RUNTIME = \".*\"|BRIDGETHING_WAKEWORD_MODEL_RUNTIME = \"$RUNTIME\"|" \
   "$PIN"
 rm -f "$PIN.bak"
 

@@ -28,6 +28,8 @@ do_install() {
         install -d ${D}${WAKEWORD_DIR}
         install -m 0644 ${UNPACKDIR}/hey_bridgething-${PV}.btww \
             ${D}${WAKEWORD_DIR}/hey_bridgething.btww
+        echo "${PV}" > ${D}${WAKEWORD_DIR}/hey_bridgething.version
+        chmod 0644 ${D}${WAKEWORD_DIR}/hey_bridgething.version
     fi
 }
 

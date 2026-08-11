@@ -1,50 +1,88 @@
 #!/bin/sh
-# adopt the booted image's factory floor (daemon + builtin webapps) onto bandaid when the image
-# version changed, so an image ota (or an a/b rollback) carries its matching daemon and builtin
-# webapps and they revert together. a daemon-only / builtin-webapp ota leaves the recorded image
-# version untouched, so it is never re-adopted or downgraded. best-effort: any missing input leaves
-# the existing bandaid copy in place. runs as bridgething.service ExecStartPre, after
-# opt-overlay@bridgething has bound bandaid to /opt/bridgething.
-#
-# adoption fires only on an observed version transition, so it needs a prior record. with no record
-# bandaid came straight off a flash and already holds this image's intended floor, which a composite
-# first-flash bundle deliberately builds newer than the rootfs copy.
 set -u
 
-META=/etc/superbird
-RECORD=/opt/bridgething/.adopted-image-version
-FACTORY=/usr/lib/bridgething
-BANDAID=/opt/bridgething
+ROOT="${BRIDGETHING_ADOPT_ROOT:-}"
 
-imgver=$(sed -n 's/.*"imageVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$META" 2>/dev/null | head -n1)
-[ -n "$imgver" ] || exit 0
+META=$ROOT/etc/superbird
+RECORD=$ROOT/opt/bridgething/.adopted-image-version
+FACTORY=$ROOT/usr/lib/bridgething
+BANDAID=$ROOT/opt/bridgething
 
-recorded=$(cat "$RECORD" 2>/dev/null || true)
-[ "$imgver" = "$recorded" ] && exit 0
+RUNNING_STAMP=$BANDAID/daemon/.running-version
+FACTORY_STAMP=$FACTORY/daemon/.factory-version
 
-if [ -z "$recorded" ]; then
-    echo "$imgver" > "$RECORD"
-    echo "bridgething-adopt-daemon: no record, taking bandaid as image $imgver floor" >&2
-    exit 0
-fi
+version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | tail -n1)" = "$1" ]; }
 
-if [ -f "$FACTORY/daemon/bridgething.current" ] && [ -d "$BANDAID/daemon" ]; then
+json_string() {
+    sed -n "s/^[[:space:]]*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$1" 2>/dev/null | head -n1
+}
+
+read_stamp() { head -n1 "$1" 2>/dev/null | tr -d '[:space:]'; }
+
+say() { echo "bridgething-adopt-daemon: $*" >&2; }
+
+newer_on_bandaid() {
+    [ -n "$1" ] && [ -n "$2" ] && version_ge "$1" "$2"
+}
+
+adopt_daemon() {
+    [ -f "$FACTORY/daemon/bridgething.current" ] || return 0
+    [ -d "$BANDAID/daemon" ] || return 0
+
+    running=$(read_stamp "$RUNNING_STAMP")
+    factory=$(read_stamp "$FACTORY_STAMP")
+    if newer_on_bandaid "$running" "$factory"; then
+        say "keeping bandaid daemon $running over image floor $factory"
+        return 0
+    fi
+
     if [ -f "$BANDAID/daemon/bridgething.current" ]; then
         cp -a "$BANDAID/daemon/bridgething.current" "$BANDAID/daemon/bridgething.previous"
     fi
     cp -a "$FACTORY/daemon/bridgething.current" "$BANDAID/daemon/bridgething.current.adopt"
     mv "$BANDAID/daemon/bridgething.current.adopt" "$BANDAID/daemon/bridgething.current"
+    say "adopted daemon ${running:-unknown} -> ${factory:-unknown}"
+}
 
-    for app in hub stock; do
-        [ -d "$FACTORY/webapps/$app" ] || continue
+adopt_webapps() {
+    [ -d "$FACTORY/webapps" ] || return 0
+
+    for src in "$FACTORY"/webapps/*; do
+        [ -d "$src" ] || continue
+        app=${src##*/}
+
+        factory=$(json_string "$src/manifest.json" version)
+        bandaid=$(json_string "$BANDAID/webapps/$app/manifest.json" version)
+        if newer_on_bandaid "$bandaid" "$factory"; then
+            say "keeping bandaid webapp $app $bandaid over image floor $factory"
+            continue
+        fi
+
         rm -rf "$BANDAID/webapps/$app.adopt"
-        cp -a "$FACTORY/webapps/$app" "$BANDAID/webapps/$app.adopt"
+        cp -a "$src" "$BANDAID/webapps/$app.adopt"
         rm -rf "$BANDAID/webapps/$app"
         mv "$BANDAID/webapps/$app.adopt" "$BANDAID/webapps/$app"
+        say "adopted webapp $app ${bandaid:-unknown} -> ${factory:-unknown}"
     done
+}
 
+imgver=$(json_string "$META" imageVersion)
+[ -n "$imgver" ] || exit 0
+
+recorded=$(read_stamp "$RECORD")
+[ "$imgver" = "$recorded" ] && exit 0
+
+if [ -z "$recorded" ]; then
     echo "$imgver" > "$RECORD"
-    echo "bridgething-adopt-daemon: adopted image $imgver factory floor onto bandaid" >&2
+    say "no record, taking bandaid as image $imgver floor"
+    exit 0
+fi
+
+if [ -f "$FACTORY/daemon/bridgething.current" ]; then
+    adopt_daemon
+    adopt_webapps
+    echo "$imgver" > "$RECORD"
+    say "recorded image $imgver"
 fi
 
 exit 0

@@ -1,0 +1,144 @@
+#!/bin/sh
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ADOPT="$REPO_ROOT/meta-bridgething/recipes-core/bridgething-daemon/files/bridgething-adopt-daemon"
+
+PASS=0
+FAIL=0
+ROOT=""
+
+fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL + 1)); }
+pass() { printf '\033[1;32mok\033[0m   %s\n' "$*"; PASS=$((PASS + 1)); }
+
+scratch() {
+  ROOT=$(mktemp -d "${TMPDIR:-/tmp}/bridgething-adopt-test.XXXXXX")
+  mkdir -p "$ROOT/etc" "$ROOT/usr/lib/bridgething/daemon" "$ROOT/usr/lib/bridgething/webapps" \
+           "$ROOT/opt/bridgething/daemon" "$ROOT/opt/bridgething/webapps"
+  printf '{\n  "imageVersion": "%s"\n}\n' "$1" >"$ROOT/etc/superbird"
+  printf 'factory daemon %s\n' "$2" >"$ROOT/usr/lib/bridgething/daemon/bridgething.current"
+  printf '%s\n' "$2" >"$ROOT/usr/lib/bridgething/daemon/.factory-version"
+  printf 'bandaid daemon %s\n' "$3" >"$ROOT/opt/bridgething/daemon/bridgething.current"
+  printf '%s\n' "$3" >"$ROOT/opt/bridgething/daemon/.running-version"
+}
+
+webapp() {
+  mkdir -p "$ROOT/$1/bridgething/webapps/$2"
+  printf '{\n  "id": "%s",\n  "version": "%s"\n}\n' "$2" "$3" >"$ROOT/$1/bridgething/webapps/$2/manifest.json"
+  printf '%s %s\n' "$2" "$3" >"$ROOT/$1/bridgething/webapps/$2/index.html"
+}
+
+record() { printf '%s\n' "$1" >"$ROOT/opt/bridgething/.adopted-image-version"; }
+run() { BRIDGETHING_ADOPT_ROOT="$ROOT" sh "$ADOPT" 2>/dev/null; }
+
+daemon_is()  { grep -q "$1" "$ROOT/opt/bridgething/daemon/bridgething.current"; }
+webapp_is()  { grep -q "\"version\": \"$2\"" "$ROOT/opt/bridgething/webapps/$1/manifest.json" 2>/dev/null; }
+
+scratch 1.2.0 0.7.0 0.8.0
+record 1.1.0
+run
+daemon_is 'bandaid daemon 0.8.0' \
+  && pass "a newer bandaid daemon survives an image ota that bakes an older one" \
+  || fail "a newer bandaid daemon survives an image ota that bakes an older one"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+run
+daemon_is 'factory daemon 0.9.0' \
+  && pass "a newer image daemon still floors an older bandaid one" \
+  || fail "a newer image daemon still floors an older bandaid one"
+
+scratch 1.2.0 0.8.0 0.8.0
+record 1.1.0
+run
+daemon_is 'bandaid daemon 0.8.0' \
+  && pass "an equal version is left alone rather than recopied" \
+  || fail "an equal version is left alone rather than recopied"
+
+scratch 1.2.0 0.7.0 0.8.0
+rm -f "$ROOT/opt/bridgething/daemon/.running-version"
+record 1.1.0
+run
+daemon_is 'factory daemon 0.7.0' \
+  && pass "no running stamp falls back to flooring" \
+  || fail "no running stamp falls back to flooring"
+
+scratch 1.2.0 0.7.0 0.8.0
+record 1.1.0
+run
+[ -f "$ROOT/opt/bridgething/daemon/bridgething.previous" ] \
+  && fail "a skipped adoption must not rotate previous" \
+  || pass "a skipped adoption must not rotate previous"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+run
+grep -q 'bandaid daemon 0.8.0' "$ROOT/opt/bridgething/daemon/bridgething.previous" \
+  && pass "flooring keeps the displaced daemon as previous" \
+  || fail "flooring keeps the displaced daemon as previous"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+for app in hub browser stock; do webapp usr/lib "$app" 2.0.0; webapp opt "$app" 1.0.0; done
+run
+webapp_is browser 2.0.0 \
+  && pass "every webapp the image ships is adopted, not a fixed subset" \
+  || fail "every webapp the image ships is adopted, not a fixed subset"
+webapp_is hub 2.0.0 && webapp_is stock 2.0.0 \
+  && pass "hub and stock are still adopted" \
+  || fail "hub and stock are still adopted"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+webapp usr/lib hub 1.0.0; webapp opt hub 3.0.0
+webapp usr/lib stock 5.0.0; webapp opt stock 4.0.0
+run
+webapp_is hub 3.0.0 \
+  && pass "a newer bandaid webapp survives an image ota that bakes an older one" \
+  || fail "a newer bandaid webapp survives an image ota that bakes an older one"
+webapp_is stock 5.0.0 \
+  && pass "an older bandaid webapp is still floored, per component" \
+  || fail "an older bandaid webapp is still floored, per component"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+webapp usr/lib browser 2.0.0
+run
+webapp_is browser 2.0.0 \
+  && pass "a webapp missing from bandaid is installed" \
+  || fail "a webapp missing from bandaid is installed"
+
+scratch 1.1.0 0.9.0 0.8.0
+record 1.1.0
+run
+daemon_is 'bandaid daemon 0.8.0' \
+  && pass "an unchanged image version adopts nothing" \
+  || fail "an unchanged image version adopts nothing"
+
+scratch 1.2.0 0.9.0 0.8.0
+run
+daemon_is 'bandaid daemon 0.8.0' \
+  && pass "a first boot with no record takes bandaid as the floor" \
+  || fail "a first boot with no record takes bandaid as the floor"
+[ "$(cat "$ROOT/opt/bridgething/.adopted-image-version")" = "1.2.0" ] \
+  && pass "a first boot records the image version" \
+  || fail "a first boot records the image version"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+rm -f "$ROOT/usr/lib/bridgething/daemon/bridgething.current"
+run
+[ "$(cat "$ROOT/opt/bridgething/.adopted-image-version")" = "1.1.0" ] \
+  && pass "an image with no factory daemon leaves the record for the next boot to retry" \
+  || fail "an image with no factory daemon leaves the record for the next boot to retry"
+
+scratch 1.2.0 0.9.0 0.8.0
+record 1.1.0
+run
+[ "$(cat "$ROOT/opt/bridgething/.adopted-image-version")" = "1.2.0" ] \
+  && pass "an adoption pass records the new image version" \
+  || fail "an adoption pass records the new image version"
+
+printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]
