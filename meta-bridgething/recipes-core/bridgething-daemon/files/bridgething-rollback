@@ -1,27 +1,19 @@
 #!/bin/sh
-# rotate bandaid daemon; if no previous, wipe bandaid and reboot to factory.
+# promote previous bandaid daemon over the failing current; if no previous, wipe bandaid and reboot to factory.
 set -eu
 
 BANDAID_VENDOR=/var/lib/bandaid/bridgething
 DAEMON_DIR=${BANDAID_VENDOR}/daemon
 CURRENT=${DAEMON_DIR}/bridgething.current
 PREVIOUS=${DAEMON_DIR}/bridgething.previous
-TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-BROKEN=${DAEMON_DIR}/bridgething.broken.${TIMESTAMP}
 
 if [ ! -d "$BANDAID_VENDOR" ]; then
     exit 0
 fi
 
 if [ -e "$PREVIOUS" ]; then
-    if [ -e "$CURRENT" ]; then
-        mv "$CURRENT" "$BROKEN"
-    fi
+    rm -f "$CURRENT"
     mv "$PREVIOUS" "$CURRENT"
-
-    ls -1t "${DAEMON_DIR}"/bridgething.broken.* 2>/dev/null \
-        | tail -n +4 \
-        | xargs -r rm -f
 
     systemctl reset-failed bridgething.service
     systemctl start bridgething.service
