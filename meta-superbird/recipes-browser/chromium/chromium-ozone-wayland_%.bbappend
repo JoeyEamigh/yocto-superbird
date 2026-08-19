@@ -167,6 +167,13 @@ do_install_rollup_arm64_native () {
 addtask install_rollup_arm64_native after do_unpack before do_compile
 
 do_install_esbuild_arm64_native () {
+    # only an aarch64 BUILD host needs the bundled x86_64 esbuild replaced.
+    # On an x86_64 host this task used to install the aarch64 binary anyway
+    # (the guard below is only for idempotency), and the devtools-frontend
+    # build then execs an aarch64 static binary on x86_64: do_compile fails
+    # deterministically at the first esbuild ninja edge with an exec-format
+    # error. See issue #3.
+    [ "${BUILD_ARCH}" = "aarch64" ] || return 0
     esbuild_bin="${S}/third_party/devtools-frontend/src/third_party/esbuild/esbuild"
     [ -e "$esbuild_bin" ] || return 0
     # idempotent: skip if already aarch64
