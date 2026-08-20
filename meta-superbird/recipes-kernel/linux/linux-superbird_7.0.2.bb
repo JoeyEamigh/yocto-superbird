@@ -33,7 +33,10 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0017-drm-meson-disable-afbc-scanout-on-superbird.patch \
            file://0018-media-meson-vdec-implement-VIDIOC_G_SELECTION-on-the.patch \
            file://0019-media-meson-vdec-support-single-planar-NV12-on-the-CA.patch \
-           file://0020-media-meson-vdec-support-single-planar-NV12-for-VP9.patch"
+           file://0020-media-meson-vdec-support-single-planar-NV12-for-VP9.patch \
+           file://0021-media-meson-vdec-propagate-h264-errors.patch \ 
+           file://0022-media-meson-vdec-fallback-h264-timestamps.patch \ 
+           file://0023-media-meson-vdec-ignore-empty-output-pollerr-before-capture.patch"
 
 inherit kernel
 
