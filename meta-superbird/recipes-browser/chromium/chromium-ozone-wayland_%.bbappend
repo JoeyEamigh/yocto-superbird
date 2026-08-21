@@ -167,7 +167,7 @@ do_install_rollup_arm64_native () {
 addtask install_rollup_arm64_native after do_unpack before do_compile
 
 do_install_esbuild_arm64_native () {
-    esbuild_bin="${S}/third_party/devtools-frontend/src/third_party/esbuild/esbuild"
+    case "${BUILD_ARCH}" in aarch64) ;; *) return 0 ;; esac ; esbuild_bin="${S}/third_party/devtools-frontend/src/third_party/esbuild/esbuild"
     [ -e "$esbuild_bin" ] || return 0
     # idempotent: skip if already aarch64
     case "$(file -b "$esbuild_bin" 2>/dev/null)" in
@@ -182,3 +182,4 @@ do_install_esbuild_arm64_native () {
     bbnote "chromium: replaced bundled x86_64 esbuild with aarch64 binary"
 }
 addtask install_esbuild_arm64_native after do_unpack before do_compile
+do_install_esbuild_arm64_native[vardepvalueexclude] = 'case "${BUILD_ARCH}" in aarch64) ;; *) return 0 ;; esac ; '
