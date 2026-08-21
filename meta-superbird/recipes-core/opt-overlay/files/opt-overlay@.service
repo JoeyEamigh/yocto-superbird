@@ -1,17 +1,17 @@
 [Unit]
-Description=Bind /opt/%I
+Description=Bind /opt/%i
 DefaultDependencies=no
 After=local-fs.target var-lib-bandaid.mount
 Wants=var-lib-bandaid.mount
 Before=basic.target
-ConditionPathExists=/usr/lib/%I
+ConditionPathExists=/usr/lib/%i
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStartPre=/bin/mkdir -p /opt/%I
-ExecStart=/usr/libexec/opt-overlay-bind %I
-ExecStop=/bin/umount /opt/%I
+ExecStartPre=/bin/mkdir -p /opt/%i
+ExecStart=/usr/libexec/opt-overlay-bind %i
+ExecStop=/bin/umount /opt/%i
 
 [Install]
 WantedBy=multi-user.target

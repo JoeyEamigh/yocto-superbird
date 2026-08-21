@@ -1,8 +1,5 @@
 #!/bin/sh
-# bind /opt/<vendor> to bandaid. seed bandaid from the rootfs floor if the
-# vendor subdir is missing so the bind always lands on a writable surface;
-# binding the ro rootfs would EROFS-fail any subsequent daemon/builtin-webapp
-# ota swap.
+# bind /opt/<vendor> to bandaid. seed bandaid from the rootfs floor if the vendor subdir is missing
 set -eu
 
 VENDOR=${1:?vendor name required}
