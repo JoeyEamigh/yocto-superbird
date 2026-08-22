@@ -75,10 +75,6 @@ repos:
     path: sources/meta-browser
     layers:
       meta-chromium:
-        # master claims wrynose, ships chromium 147+. Only meta-chromium
-        # sub-layer used; meta-firefox is gecko-based and there's no
-        # firefox new enough for Speedometer 3 anyway. No meta-clang
-        # needed - wrynose's openembedded-core ships clang 22 natively.
 
 local_conf_header:
   base: |
@@ -86,20 +82,7 @@ local_conf_header:
     RM_WORK_EXCLUDE += "linux-superbird chromium-ozone-wayland"
     INHERIT += "ccache"
     CCACHE_TOP_DIR = "${TOPDIR}/../ccache"
-    # Global IMAGE_FEATURES that both prod and dev want (per the
-    # project's open-auth posture: empty root password + SSH + serial
-    # autologin are intentional, not an oversight). Anything dev-only
-    # (tools-debug, post-install-logging) lives in
-    # meta-bridgething/recipes-core/images/bridgething-dev-image.bb
-    # so prod doesn't pull gdb / gdbserver / strace / libc-mtrace.
-    # read-only-rootfs is intentionally left off both images: although
-    # the runtime fstab mounts system_a ro, the image-feature also
-    # reorganizes /etc into an overlayfs and bakes runtime state in at
-    # build time, which breaks scp-into-/usr/libexec hot-fixing during
-    # iteration.
     EXTRA_IMAGE_FEATURES = "ssh-server-openssh allow-empty-password allow-root-login empty-root-password serial-autologin-root"
-    # weston-xwayland pulls pam as a hard dependency; poky's default
-    # DISTRO_FEATURES omits it, so add explicitly.
     DISTRO_FEATURES:append = " pam"
     INHERIT:remove = "create-spdx"
     # BB_NUMBER_THREADS = "12"
@@ -108,9 +91,9 @@ local_conf_header:
   init-systemd: |
     INIT_MANAGER = "systemd"
 
-  cache-24hgr: |
+  cache-bridgething: |
     SSTATE_MIRRORS ?= "\
-      file://.* http://yocto.24hgr.love/sstate/PATH;downloadfilename=PATH \n\
+      file://.* https://sstate.bridgething.com/sstate/PATH;downloadfilename=PATH \n\
       file://.* http://sstate.yoctoproject.org/all/PATH;downloadfilename=PATH \n\
     "
     PREMIRRORS ?= "\
@@ -119,8 +102,7 @@ local_conf_header:
     "
     BB_GENERATE_MIRROR_TARBALLS = "1"
 
-  no-hashequiv: |
-    # Our sstate mirror (yocto.24hgr.love) isn't paired with a hash-equivalence
-    # server, so OEEquivHash lookups would miss.
-    BB_HASHSERVE = ""
-    BB_SIGNATURE_HANDLER = "OEBasicHash"
+  hashequiv: |
+    BB_SIGNATURE_HANDLER = "OEEquivHash"
+    BB_HASHSERVE = "auto"
+    BB_HASHSERVE_UPSTREAM = "wss://hashserv.bridgething.com/ws"

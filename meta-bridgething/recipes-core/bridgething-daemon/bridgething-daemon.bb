@@ -46,6 +46,7 @@ DEPENDS:append = "${@' clang-native cmake-native' if d.getVar('FROM_SOURCE') == 
 
 export LIBCLANG_PATH = "${STAGING_LIBDIR_NATIVE}"
 export BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=${RECIPE_SYSROOT}"
+export CMAKE_POLICY_VERSION_MINIMUM = "3.5"
 
 export DO_NOT_FORMAT = "1"
 

@@ -1,16 +1,3 @@
-# Local-source override for bridgething recipes. Lets you build the dev
-# image from an unpushed bridgething working tree instead of the github
-# checkout listed in each recipe's SRC_URI.
-#
-# Usage:
-#   1. Copy this file to kas/bridgething-local.yml (gitignored):
-#        cp kas/bridgething-local.example.yml kas/bridgething-local.yml
-#   2. Edit BRIDGETHING_LOCAL below to point at your bridgething checkout.
-#      That path is the only host-specific value; the Justfile reads it
-#      back out of this file and bind-mounts it into the kas container.
-#   3. Build with `just build bridgething-local` (instead of the usual
-#      `just build` / `just build bridgething`).
-
 header:
   version: 18
   includes:
@@ -41,6 +28,11 @@ local_conf_header:
     EXTERNALSRC_SYMLINKS = ""
 
     CARGO_BUILD_FLAGS:append:pn-bridgething-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
+
+  hashserv-reporter: |
+    # BB_HASHSERVE = "wss://hashserv.bridgething.com/ws"
+    # BB_HASHSERVE_USERNAME = "your-user"
+    # BB_HASHSERVE_PASSWORD = "your-token"
 
 repos:
   yocto-superbird:
