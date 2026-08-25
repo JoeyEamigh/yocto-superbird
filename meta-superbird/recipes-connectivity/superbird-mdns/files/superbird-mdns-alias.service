@@ -1,0 +1,14 @@
+[Unit]
+Description=Per-device mDNS alias for this board
+After=avahi-daemon.service superbird-usb-gadget.service
+Wants=avahi-daemon.service
+ConditionPathExists=/run/superbird-mdns-alias.env
+
+[Service]
+EnvironmentFile=/run/superbird-mdns-alias.env
+ExecStart=/usr/bin/avahi-publish -a -R ${ALIAS} ${ADDR}
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

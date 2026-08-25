@@ -1,5 +1,5 @@
 SUMMARY = "USB gadget bring-up: composite CDC-NCM + FunctionFS-ADB"
-DESCRIPTION = "Single-config composite on the DWC2 controller. Per-serial /29 subnet, DHCP via systemd-networkd, transient mDNS hostname via avahi."
+DESCRIPTION = "Single-config composite on the DWC2 controller. Per-serial /29 subnet and DHCP via systemd-networkd."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
