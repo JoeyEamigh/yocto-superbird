@@ -94,7 +94,7 @@ Name=uncm*
 [Network]
 Address=$NCM_DEV_IP/29
 DHCPServer=yes
-LinkLocalAddressing=no
+LinkLocalAddressing=ipv6
 IPv6AcceptRA=no
 IPMasquerade=no
 ConfigureWithoutCarrier=yes

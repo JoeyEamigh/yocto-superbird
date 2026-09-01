@@ -4,7 +4,7 @@ Name=uncm*
 [Network]
 Address=10.42.1.2/29
 DHCPServer=yes
-LinkLocalAddressing=no
+LinkLocalAddressing=ipv6
 IPv6AcceptRA=no
 IPMasquerade=no
 ConfigureWithoutCarrier=yes
