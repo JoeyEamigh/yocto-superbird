@@ -1,0 +1,15 @@
+[Unit]
+Description=Check and repair the %i partition
+DefaultDependencies=no
+After=systemd-udevd.service superbird-provision.service
+Before=local-fs-pre.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/superbird-fsck %i
+StandardError=journal+console
+
+[Install]
+WantedBy=sysinit.target

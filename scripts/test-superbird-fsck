@@ -1,0 +1,198 @@
+#!/bin/sh
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+FSCK_SRC="$REPO_ROOT/meta-superbird/recipes-core/superbird-fsck/files/superbird-fsck.sh"
+JOURNAL_MIB=4
+
+PASS=0
+FAIL=0
+
+fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL + 1)); }
+pass() { printf '\033[1;32mok\033[0m   %s\n' "$*"; PASS=$((PASS + 1)); }
+check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/bandaid-repair-test.XXXXXX")
+FSCK="$WORK/superbird-fsck"
+sed "s|@@JOURNAL_MIB@@|$JOURNAL_MIB|g" "$FSCK_SRC" >"$FSCK"
+chmod +x "$FSCK"
+mkdir -p "$WORK/mnt"
+
+LOOP=""
+IMG=""
+n=0
+
+scratch() {
+  n=$((n + 1))
+  IMG="$WORK/img.$n"
+  truncate -s 192M "$IMG"
+  LOOP=$(losetup --show -f "$IMG")
+}
+
+release() {
+  umount "$WORK/mnt" 2>/dev/null
+  blockdev --flushbufs "$LOOP" 2>/dev/null
+  losetup -d "$LOOP"
+  rm -f "$IMG"
+}
+
+mkpart() { mkfs.ext4 -q -F -L "${LABEL:-bandaid}" -m 0 "$@" "$LOOP"; }
+seed() {
+  mount "$LOOP" "$WORK/mnt" || return 1
+  mkdir -p "$WORK/mnt/bridgething/daemon"
+  dd if=/dev/urandom of="$WORK/mnt/bridgething/daemon/bridgething.current" bs=1M count=8 status=none
+  echo payload >"$WORK/mnt/bridgething/marker"
+  umount "$WORK/mnt"
+}
+
+run()         { SUPERBIRD_FSCK_DEV="$LOOP" "$FSCK" "${1:-bandaid}" 2>&1; }
+rc_of()       { SUPERBIRD_FSCK_DEV="$LOOP" "$FSCK" "${1:-bandaid}" >/dev/null 2>&1; echo $?; }
+consistent()  { e2fsck -fn "$LOOP" >/dev/null 2>&1 && echo yes || echo no; }
+journalled()  { tune2fs -l "$LOOP" 2>/dev/null | grep -q has_journal && echo yes || echo no; }
+label()       { tune2fs -l "$LOOP" 2>/dev/null | sed -n 's/^Filesystem volume name: *//p'; }
+uuid()        { tune2fs -l "$LOOP" 2>/dev/null | sed -n 's/^Filesystem UUID: *//p'; }
+mountable()   { mount "$LOOP" "$WORK/mnt" 2>/dev/null && { umount "$WORK/mnt"; echo yes; } || echo no; }
+payload()     { mount "$LOOP" "$WORK/mnt" 2>/dev/null && { cat "$WORK/mnt/bridgething/marker" 2>/dev/null; umount "$WORK/mnt"; }; }
+contents()    { mount "$LOOP" "$WORK/mnt" 2>/dev/null && { ls "$WORK/mnt" | tr '\n' ' '; umount "$WORK/mnt"; }; }
+damage()      { for c in "$@"; do debugfs -w -R "$c" "$LOOP" >/dev/null 2>&1; done; }
+said()        { echo "$1" | grep -qF "$2" && echo yes || echo no; }
+
+scratch
+mkpart -O ^has_journal
+seed
+check "a journal-less bandaid starts without one" "$(journalled)" "no"
+out=$(run)
+check "a journal-less bandaid is retrofitted with a journal" "$(journalled)" "yes"
+check "the retrofit leaves the filesystem consistent" "$(consistent)" "yes"
+check "the retrofit keeps the payload" "$(payload)" "payload"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+before=$(uuid)
+out=$(run)
+check "a healthy bandaid is not reformatted" "$(uuid)" "$before"
+check "a healthy bandaid keeps its payload" "$(payload)" "payload"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+damage "ssv state 0"
+out=$(run)
+check "an unclean-shutdown flag never reaches the full repair" "$(said "$out" 'forcing a full repair')" "no"
+check "an unclean-shutdown flag is cleared" "$(consistent)" "yes"
+check "an unclean shutdown keeps the payload" "$(payload)" "payload"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+damage "sif <2> block[0] 0" "ssv state 0"
+out=$(run)
+check "damage preen refuses escalates to a full repair" "$(said "$out" 'forcing a full repair')" "yes"
+check "damage preen refuses is repaired, not reformatted" "$(said "$out" 'reformatting')" "no"
+check "the full repair leaves the filesystem consistent" "$(consistent)" "yes"
+check "the full repair leaves the filesystem mountable" "$(mountable)" "yes"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+damage "ssv blocks_count 300000"
+out=$(run)
+check "a superblock outgrowing the partition ends consistent" "$(consistent)" "yes"
+check "a superblock outgrowing the partition ends mountable" "$(mountable)" "yes"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+dd if=/dev/urandom of="$LOOP" bs=1M count=2 status=none
+check "a shredded primary superblock is broken to begin with" "$(consistent)" "no"
+out=$(run)
+check "a shredded primary superblock recovers from a backup, not a reformat" "$(said "$out" 'reformatting')" "no"
+check "a shredded primary superblock ends consistent" "$(consistent)" "yes"
+check "a shredded primary superblock ends journalled" "$(journalled)" "yes"
+check "a shredded primary superblock ends mountable" "$(mountable)" "yes"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+dd if=/dev/urandom of="$LOOP" bs=1M count=192 status=none
+out=$(run)
+check "an unrepairable bandaid is reformatted" "$(said "$out" 'reformatting')" "yes"
+check "the reformat leaves the filesystem consistent" "$(consistent)" "yes"
+check "the reformat keeps the label" "$(label)" "bandaid"
+check "the reformat leaves the filesystem journalled" "$(journalled)" "yes"
+check "the reformat leaves it empty for opt-overlay to reseed" "$(contents)" "lost+found "
+release
+
+scratch
+out=$(run)
+check "a device with no filesystem at all is formatted" "$(consistent)" "yes"
+check "a formatted blank device is journalled" "$(journalled)" "yes"
+check "a formatted blank device carries the label" "$(label)" "bandaid"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+mount "$LOOP" "$WORK/mnt"
+echo canary >"$WORK/mnt/canary"
+out=$(run)
+check "a mounted bandaid is refused" "$(said "$out" 'refusing to check a live filesystem')" "yes"
+check "a mounted bandaid is left untouched" "$(cat "$WORK/mnt/canary")" "canary"
+umount "$WORK/mnt"
+release
+
+LOOP=/dev/loop-does-not-exist
+out=$(run)
+check "an absent device is a no-op" "$(said "$out" 'absent; nothing to check')" "yes"
+
+LABEL=data
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+damage "ssv blocks_count 300000"
+out=$(run data)
+check "damage preen refuses is still repaired on data" "$(said "$out" 'forcing a full repair')" "yes"
+check "a repaired data partition is not reformatted" "$(said "$out" 'reformatting')" "no"
+check "a repaired data partition is left consistent" "$(consistent)" "yes"
+check "a repaired data partition keeps its payload" "$(payload)" "payload"
+release
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+dd if=/dev/urandom of="$LOOP" bs=1M count=192 status=none
+out=$(run data)
+check "an unrepairable data partition is never reformatted" "$(said "$out" 'reformatting')" "no"
+check "an unrepairable data partition stays unreadable" "$(consistent)" "no"
+check "an unrepairable data partition says it is standing aside" "$(said "$out" 'leaving it to makefs')" "yes"
+release
+
+scratch
+out=$(run data)
+check "a freshly carved data partition is left for makefs" "$(said "$out" 'leaving it to makefs')" "yes"
+check "a freshly carved data partition is not formatted here" "$(consistent)" "no"
+check "a freshly carved data partition does not fail the unit" "$(rc_of data)" "0"
+release
+
+LABEL=bandaid
+
+scratch
+mkpart -J size=$JOURNAL_MIB
+seed
+out=$(run no-such-partition)
+check "an unknown partlabel is refused rather than guessed at" "$(said "$out" 'no policy for')" "yes"
+check "an unknown partlabel touches nothing" "$(payload)" "payload"
+release
+
+rm -rf "$WORK"
+
+printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]

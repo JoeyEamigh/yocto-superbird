@@ -143,8 +143,11 @@ test-scripts:
   if docker info >/dev/null 2>&1; then
     echo "--- busybox 1.37.0 ---"
     docker run --rm -v "$PWD:/w:ro" -w /w busybox:1.37.0 sh scripts/test-adopt-daemon
+    echo "--- superbird-fsck ---"
+    docker run --rm --privileged -e DEBIAN_FRONTEND=noninteractive -v "$PWD:/w:ro" -w /w debian:trixie-slim bash -c \
+      'apt-get update -qq >/dev/null && apt-get install -y -qq e2fsprogs util-linux >/dev/null && exec scripts/test-superbird-fsck'
   else
-    echo "docker is down; skipped the busybox pass" >&2
+    echo "docker is down: skipped busybox and superbird-fsck" >&2
   fi
 
 # --- sstate mirror ---

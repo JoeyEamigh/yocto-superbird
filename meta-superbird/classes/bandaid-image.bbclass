@@ -1,16 +1,10 @@
-# builds bandaid.ext4 from a vendor's ipks. consumed at first flash to
-# populate the bandaid partition; contents (daemon binary, webapps) can
-# be swapped on the live device without a slot flip by writing into the
-# opt-overlay bind-mount and restarting the service.
+# builds bandaid.ext4 from a vendor's ipks
 #
 # inheritors set:
-#   BANDAID_VENDOR    vendor name; matches the opt-overlay@<vendor>.service instance
-#   BANDAID_PACKAGES  ipks to unpack; their /usr/lib/${BANDAID_VENDOR}/
-#                     payload is rebased to /${BANDAID_VENDOR}/ inside the
-#                     ext4 (opt-overlay@${BANDAID_VENDOR}.service binds the
-#                     partition's /${BANDAID_VENDOR}/ to /opt/${BANDAID_VENDOR}).
+#   BANDAID_VENDOR    vendor name
+#   BANDAID_PACKAGES  ipks to unpack
 #
-# size from SUPERBIRD_BANDAID_PART_SIZE (MiB).
+# size from SUPERBIRD_BANDAID_PART_SIZE (MiB), journal from SUPERBIRD_EXT4_JOURNAL_SIZE (MiB)
 
 COMPATIBLE_MACHINE = "^superbird$"
 
@@ -50,7 +44,7 @@ do_compile() {
 
     rm -f ${B}/bandaid.ext4
     truncate -s ${BANDAID_IMG_BYTES} ${B}/bandaid.ext4
-    mkfs.ext4 -F -L bandaid -m 0 -O ^has_journal -d ${STAGE} ${B}/bandaid.ext4
+    mkfs.ext4 -F -L bandaid -m 0 -J size=${SUPERBIRD_EXT4_JOURNAL_SIZE} -d ${STAGE} ${B}/bandaid.ext4
 }
 
 do_deploy() {
