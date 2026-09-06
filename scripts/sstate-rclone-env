@@ -5,7 +5,7 @@ if [ -z "${AWS_ACCESS_KEY_ID:-}" ] && [ -f "$creds" ]; then
   # shellcheck disable=SC1090
   source "$creds"
 fi
-: "${AWS_ACCESS_KEY_ID:?no R2 keys: run '~/Documents/carthing/publish creds' or export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY}"
+: "${AWS_ACCESS_KEY_ID:?no R2 keys: export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY}"
 : "${AWS_SECRET_ACCESS_KEY:?no R2 secret key}"
 export RCLONE_CONFIG_R2_TYPE=s3
 export RCLONE_CONFIG_R2_PROVIDER=Cloudflare

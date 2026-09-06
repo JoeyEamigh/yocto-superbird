@@ -154,7 +154,7 @@ test-scripts:
 
 r2_endpoint := "https://0a665ba1f35a38354b3f623be13f14bd.r2.cloudflarestorage.com"
 sstate_remote := "r2:bridgething-sstate/sstate"
-r2_creds := env_var_or_default('CARTHING_R2_CREDS', '/private/tmp/carthing-r2-creds.env')
+r2_creds := env_var_or_default('CARTHING_R2_CREDS', '/tmp/carthing-r2-creds.env')
 
 # Upload this build's new sstate objects to the public mirror.
 push-sstate:

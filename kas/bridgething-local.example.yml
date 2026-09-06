@@ -30,9 +30,8 @@ local_conf_header:
     CARGO_BUILD_FLAGS:append:pn-bridgething-daemon = " --config profile.release.lto=false --config profile.release.codegen-units=32"
 
   hashserv-reporter: |
-    # BB_HASHSERVE = "wss://hashserv.bridgething.com/ws"
-    # BB_HASHSERVE_USERNAME = "your-user"
-    # BB_HASHSERVE_PASSWORD = "your-token"
+    BB_HASHSERVE_USERNAME = "your-user"
+    BB_HASHSERVE_PASSWORD = "your-token"
 
 repos:
   yocto-superbird:
