@@ -1,0 +1,69 @@
+Chromium: follow the Linux system timezone in cast_shell
+
+Initialize ICU from the host timezone and refresh it when Linux timezone
+files change. The kiosk uses systemd-timedated to select the timezone.
+
+Upstream-Status: Inappropriate [CastOS embedder uses Linux timezone management]
+
+Signed-off-by: Joey Eamigh <55670930+JoeyEamigh@users.noreply.github.com>
+
+--- a/base/i18n/icu_util.cc
++++ b/base/i18n/icu_util.cc
+@@ -28,7 +28,6 @@
+ #include "base/path_service.h"
+ #include "base/strings/string_number_conversions.h"
+ #include "base/strings/string_util.h"
+-#include "build/chromecast_buildflags.h"
+ #include "third_party/icu/source/common/unicode/putil.h"
+ #include "third_party/icu/source/common/unicode/uclean.h"
+ #include "third_party/icu/source/common/unicode/udata.h"
+@@ -55,7 +54,7 @@
+ #endif
+ 
+ #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA) || \
+-    BUILDFLAG(IS_CHROMEOS) || (BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CASTOS))
++    BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)
+ #include "third_party/icu/source/i18n/unicode/timezone.h"
+ #endif
+ 
+@@ -328,7 +327,7 @@
+   icu::TimeZone::adoptDefault(
+       icu::TimeZone::createTimeZone(icu::UnicodeString::fromUTF8(zone_id)));
+ #elif BUILDFLAG(IS_CHROMEOS) || \
+-    (BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CASTOS)) || BUILDFLAG(IS_ANDROID)
++    BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID)
+   // To respond to the time zone change properly, the default time zone
+   // cache in ICU has to be populated on starting up.
+   // See TimeZoneMonitorLinux::NotifyClientsFromImpl().
+--- a/services/device/time_zone_monitor/time_zone_monitor_linux.cc
++++ b/services/device/time_zone_monitor/time_zone_monitor_linux.cc
+@@ -20,7 +20,6 @@
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/threading/scoped_blocking_call.h"
+ #include "build/build_config.h"
+-#include "build/chromecast_buildflags.h"
+ #include "third_party/icu/source/i18n/unicode/timezone.h"
+ 
+ namespace device {
+@@ -40,13 +39,6 @@
+   ~TimeZoneMonitorLinux() override;
+ 
+   void NotifyClientsFromImpl() {
+-#if BUILDFLAG(IS_CASTOS)
+-    // On CastOS, ICU's default time zone is already set to a new zone. No
+-    // need to redetect it with detectHostTimeZone() or to update ICU.
+-    // See http://b/112498903 and http://b/113344065.
+-    std::unique_ptr<icu::TimeZone> new_zone(icu::TimeZone::createDefault());
+-    NotifyClients(GetTimeZoneId(*new_zone));
+-#else
+     std::unique_ptr<icu::TimeZone> new_zone(DetectHostTimeZoneFromIcu());
+ 
+     // We get here multiple times on Linux per a single tz change, but
+@@ -59,7 +51,6 @@
+     }
+ 
+     UpdateIcuAndNotifyClients(std::move(new_zone));
+-#endif  // defined(IS_CASTOS)
+   }
+ 
+  private:

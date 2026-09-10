@@ -53,6 +53,7 @@ SRC_URI:append = " \
     file://0013-cast_shell-advertise-vp9-in-stub-media-capabilities.patch \
     file://0014-cast_shell-fix-v4l2-decode-test-target-label.patch \
     file://0015-cast_shell-register-OzoneImageBackingFactory-uncondit.patch \
+    file://0016-cast_shell-follow-system-timezone.patch \
 "
 
 PACKAGECONFIG[cast-shell] = " \
