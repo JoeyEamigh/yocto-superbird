@@ -12,6 +12,7 @@ RDEPENDS:${PN} = " \
     superbird-firmware \
     superbird-bluetooth \
     superbird-init \
+    superbird-machine-id \
     superbird-clock \
     superbird-timezone \
     superbird-usb-gadget \
@@ -21,6 +22,7 @@ RDEPENDS:${PN} = " \
     superbird-audio \
     superbird-provision \
     superbird-fsck \
+    superbird-factory-reset \
     superbird-slot-ok \
     superbird-cpufreq-cap \
     opt-overlay \
@@ -34,4 +36,5 @@ RDEPENDS:${PN} = " \
     e2fsprogs-mke2fs \
     e2fsprogs-e2fsck \
     e2fsprogs-tune2fs \
+    dosfstools \
 "

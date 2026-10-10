@@ -11,6 +11,7 @@ SRC_URI = " \
     file://hwrevision \
     file://superbird-cache.conf \
     file://05-ro-cachedir.conf \
+    file://journald-superbird.conf \
 "
 
 S = "${UNPACKDIR}"
@@ -47,6 +48,9 @@ do_install() {
     install -m 0644 ${S}/05-ro-cachedir.conf \
         ${D}${sysconfdir}/fonts/conf.d/05-ro-cachedir.conf
     install -d ${D}${datadir}/fontconfig/cache
+
+    install -D -m 0644 ${S}/journald-superbird.conf \
+        ${D}${systemd_unitdir}/journald.conf.d/10-superbird.conf
 }
 
 FILES:${PN} = " \
@@ -58,6 +62,7 @@ FILES:${PN} = " \
     ${libdir}/tmpfiles.d/superbird-cache.conf \
     ${sysconfdir}/fonts/conf.d/05-ro-cachedir.conf \
     ${datadir}/fontconfig/cache \
+    ${systemd_unitdir}/journald.conf.d/10-superbird.conf \
     /root/.cache \
     /mnt/uboot-env \
 "

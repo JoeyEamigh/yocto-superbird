@@ -1,0 +1,14 @@
+[Unit]
+Description=Remove journals of foreign machine-ids
+DefaultDependencies=no
+RequiresMountsFor=/var/log/journal
+Before=systemd-journal-flush.service shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/superbird-journal-gc
+
+[Install]
+WantedBy=sysinit.target

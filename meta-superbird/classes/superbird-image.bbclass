@@ -58,3 +58,11 @@ IMAGE_PREPROCESS_COMMAND[vardeps] += "${_SUPERBIRD_META_VARDEPS}"
 do_image[vardeps] += "${_SUPERBIRD_META_VARDEPS}"
 
 IMAGE_PREPROCESS_COMMAND:append = " superbird_meta_postprocess; "
+
+superbird_preinit_check() {
+    if [ ! -x ${IMAGE_ROOTFS}/sbin/superbird-preinit ]; then
+        bbfatal "extlinux.conf boots init=/sbin/superbird-preinit; install packagegroup-superbird-runtime"
+    fi
+}
+
+ROOTFS_POSTPROCESS_COMMAND:append = " superbird_preinit_check; "

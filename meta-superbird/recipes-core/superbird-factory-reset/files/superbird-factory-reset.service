@@ -1,0 +1,17 @@
+[Unit]
+Description=Wipe the data partition for an armed factory reset
+DefaultDependencies=no
+RequiresMountsFor=/mnt/uboot-env
+BindsTo=dev-disk-by\x2dpartlabel-data.device
+After=dev-disk-by\x2dpartlabel-data.device
+Before=systemd-makefs@dev-disk-by\x2dpartlabel-data.service var.mount shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/superbird-factory-reset
+StandardError=journal+console
+
+[Install]
+WantedBy=sysinit.target

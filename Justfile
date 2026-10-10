@@ -146,8 +146,11 @@ test-scripts:
     echo "--- superbird-fsck ---"
     docker run --rm --privileged -e DEBIAN_FRONTEND=noninteractive -v "$PWD:/w:ro" -w /w debian:trixie-slim bash -c \
       'apt-get update -qq >/dev/null && apt-get install -y -qq e2fsprogs util-linux >/dev/null && exec scripts/test-superbird-fsck'
+    echo "--- superbird-factory-reset ---"
+    docker run --rm --privileged -e DEBIAN_FRONTEND=noninteractive -v "$PWD:/w:ro" -w /w debian:trixie-slim bash -c \
+      'apt-get update -qq >/dev/null && apt-get install -y -qq e2fsprogs util-linux libubootenv-tool u-boot-tools >/dev/null && exec scripts/test-superbird-factory-reset'
   else
-    echo "docker is down: skipped busybox and superbird-fsck" >&2
+    echo "docker is down: skipped busybox, superbird-fsck and superbird-factory-reset" >&2
   fi
 
 # --- sstate mirror ---

@@ -1,0 +1,81 @@
+#!/bin/sh
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESET="$REPO_ROOT/meta-superbird/recipes-core/superbird-factory-reset/files/superbird-factory-reset.sh"
+
+PASS=0
+FAIL=0
+
+fail() { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL + 1)); }
+pass() { printf '\033[1;32mok\033[0m   %s\n' "$*"; PASS=$((PASS + 1)); }
+check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/factory-reset-test.XXXXXX")
+ENV_FILE="$WORK/uboot.env"
+printf '%s 0x0000 0x10000\n' "$ENV_FILE" >/etc/fw_env.config
+mkdir -p "$WORK/shim" "$WORK/mnt"
+printf '#!/bin/sh\nexit 1\n' >"$WORK/shim/fw_setenv"
+chmod +x "$WORK/shim/fw_setenv"
+
+LOOP=""
+IMG=""
+
+scratch() {
+  IMG="$WORK/img"
+  truncate -s 64M "$IMG"
+  LOOP=$(losetup --show -f "$IMG")
+  mkfs.ext4 -q -F -m 0 "$LOOP"
+  mount "$LOOP" "$WORK/mnt" && echo payload >"$WORK/mnt/marker" && umount "$WORK/mnt"
+}
+
+release() {
+  losetup -d "$LOOP"
+  rm -f "$IMG"
+}
+
+env_with() { printf 'bootdelay=1\n%b' "$1" | mkenvimage -s 0x10000 -o "$ENV_FILE" -; }
+flag()     { fw_printenv -n factory_reset 2>/dev/null; }
+run()      { SUPERBIRD_FACTORY_RESET_DEV="${1:-$LOOP}" sh "$RESET" >/dev/null 2>&1; echo $?; }
+fs_type()  { blkid -p -o value -s TYPE "$LOOP" 2>/dev/null; }
+
+scratch
+env_with ''
+check "an unarmed boot succeeds" "$(run)" "0"
+check "an unarmed boot keeps the filesystem" "$(fs_type)" "ext4"
+release
+
+scratch
+env_with 'factory_reset=0\n'
+check "a flag other than 1 is not an arm" "$(run)" "0"
+check "a flag other than 1 keeps the filesystem" "$(fs_type)" "ext4"
+release
+
+scratch
+env_with 'factory_reset=1\n'
+check "an armed boot succeeds" "$(run)" "0"
+check "an armed boot leaves no filesystem signature for makefs" "$(fs_type)" ""
+check "an armed boot clears the flag" "$(flag)" ""
+check "an armed boot keeps the rest of the env" "$(fw_printenv -n bootdelay)" "1"
+mkfs.ext4 -q -F -m 0 "$LOOP"
+run >/dev/null
+check "the boot after makefs does not wipe again" "$(fs_type)" "ext4"
+release
+
+scratch
+env_with 'factory_reset=1\n'
+rc=$(PATH="$WORK/shim:$PATH" run)
+check "a flag that cannot be cleared fails the unit" "$rc" "1"
+check "a flag that cannot be cleared never wipes" "$(fs_type)" "ext4"
+check "a flag that cannot be cleared stays armed" "$(flag)" "1"
+release
+
+env_with 'factory_reset=1\n'
+check "a failed wipe fails the unit" "$(run "$WORK/no-such-device")" "1"
+check "a failed wipe still clears the flag" "$(flag)" ""
+
+rm -rf "$WORK"
+
+printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]
