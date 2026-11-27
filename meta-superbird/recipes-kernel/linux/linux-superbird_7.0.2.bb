@@ -38,7 +38,10 @@ SRC_URI = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git;protoc
            file://0022-media-meson-vdec-fallback-h264-timestamps.patch \
            file://0023-media-meson-vdec-ignore-empty-output-pollerr-before-capture.patch \
            file://0024-media-meson-vdec-push-the-last-VP9-frame-through-the.patch \
-           file://0025-media-meson-vdec-drain-every-OUTPUT-buffer-queued-be.patch"
+           file://0025-media-meson-vdec-drain-every-OUTPUT-buffer-queued-be.patch \
+           file://0026-media-meson-vdec-map-compressed-frames-page-by-page-.patch \
+           file://0027-media-meson-vdec-add-HEVC-decode-codec.patch \
+           file://0028-media-meson-vdec-enable-HEVC-decoding-on-G12A.patch"
 
 inherit kernel
 

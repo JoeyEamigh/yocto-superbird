@@ -1,0 +1,52 @@
+From e8116f8981d6e49e05b13e022316b2b8d842fceb Mon Sep 17 00:00:00 2001
+From: Neel Patel <108803410+68p@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 22:05:00 -0500
+Subject: [PATCH] media: meson: vdec: enable HEVC decoding on G12A
+
+Register V4L2_PIX_FMT_HEVC for G12A with the g12a_hevc_mmu.bin firmware
+and the same CAPTURE formats as H.264 and VP9, including single-planar
+NV12.
+
+The entry follows H.264 so the default OUTPUT format and the existing
+VIDIOC_ENUM_FMT indices are unchanged.
+
+Upstream-Status: Pending
+Signed-off-by: Neel Patel <108803410+68p@users.noreply.github.com>
+---
+ drivers/staging/media/meson/vdec/vdec_platform.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/staging/media/meson/vdec/vdec_platform.c b/drivers/staging/media/meson/vdec/vdec_platform.c
+index c143212..fc0cdf8 100644
+--- a/drivers/staging/media/meson/vdec/vdec_platform.c
++++ b/drivers/staging/media/meson/vdec/vdec_platform.c
+@@ -11,6 +11,7 @@
+ #include "vdec_hevc.h"
+ #include "codec_mpeg12.h"
+ #include "codec_h264.h"
++#include "codec_hevc.h"
+ #include "codec_vp9.h"
+ 
+ static const struct amvdec_format vdec_formats_gxbb[] = {
+@@ -214,6 +215,18 @@ static const struct amvdec_format vdec_formats_g12a[] = {
+ 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_NV12, 0 },
+ 		.flags = V4L2_FMT_FLAG_COMPRESSED |
+ 			 V4L2_FMT_FLAG_DYN_RESOLUTION,
++	}, {
++		.pixfmt = V4L2_PIX_FMT_HEVC,
++		.min_buffers = 4,
++		.max_buffers = 24,
++		.max_width = 3840,
++		.max_height = 2160,
++		.vdec_ops = &vdec_hevc_ops,
++		.codec_ops = &codec_hevc_ops,
++		.firmware_path = "meson/vdec/g12a_hevc_mmu.bin",
++		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_NV12, 0 },
++		.flags = V4L2_FMT_FLAG_COMPRESSED |
++			 V4L2_FMT_FLAG_DYN_RESOLUTION,
+ 	}, {
+ 		.pixfmt = V4L2_PIX_FMT_MPEG1,
+ 		.min_buffers = 8,
+-- 
+2.54.0 (Apple Git-157)
+
