@@ -1,5 +1,5 @@
 #!/bin/sh
-# promote previous bandaid daemon over the failing current; if no previous, wipe bandaid and reboot to factory.
+# once systemd gives up on the daemon, promote the previous bandaid daemon; with none, wipe bandaid and reboot to factory.
 set -eu
 
 BANDAID_VENDOR=/var/lib/bandaid/bridgething
@@ -10,6 +10,13 @@ PREVIOUS=${DAEMON_DIR}/bridgething.previous
 if [ ! -d "$BANDAID_VENDOR" ]; then
     exit 0
 fi
+
+if [ -n "$(systemctl show -p Job --value bridgething.service)" ]; then
+    exit 0
+fi
+case "$(systemctl show -p ActiveState --value bridgething.service)" in
+    active|activating|reloading) exit 0 ;;
+esac
 
 if [ -e "$PREVIOUS" ]; then
     rm -f "$CURRENT"
