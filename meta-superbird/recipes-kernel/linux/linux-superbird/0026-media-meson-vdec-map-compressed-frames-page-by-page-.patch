@@ -1,0 +1,254 @@
+From 74d3a2da97c1334c76bd605417f531cbc99deb3d Mon Sep 17 00:00:00 2001
+From: Neel Patel <108803410+68p@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 01:00:00 -0500
+Subject: [PATCH] media: meson: vdec: map compressed frames page by page
+ through the MMU
+
+On G12A and later, compressed (AFBC) reference frames are reached through
+the decoder's MMU: the codec fills a page map for each picture and the
+hardware writes and reads the frame through it. The buffers behind it
+were still allocated as physically contiguous blocks, out of the CMA
+pool, although nothing requires that. A 1080p 10-bit stream needs about
+4 MiB of compressed frame per CAPTURE buffer on top of the NV12 output,
+which does not fit a 128 MiB CMA pool next to the output buffers.
+
+Build MMU-mapped compressed frames from single pages instead, and fill
+the page map from their list. Buffers that are addressed physically,
+without the MMU, are allocated as before.
+
+Record the size the buffers were allocated with and free them with it.
+codec_hevc_free_fbc_buffers() recomputed it from the current resolution,
+which is wrong once a source change has updated it.
+
+Free the previous buffers and MMU headers when codec_hevc_setup_buffers()
+runs again on a later resume, instead of leaking them, and free the MMU
+headers when VP9 stops.
+
+Upstream-Status: Pending
+Signed-off-by: Neel Patel <108803410+68p@users.noreply.github.com>
+---
+ .../media/meson/vdec/codec_hevc_common.c      | 111 ++++++++++++++++--
+ .../media/meson/vdec/codec_hevc_common.h      |  10 ++
+ drivers/staging/media/meson/vdec/codec_vp9.c  |   1 +
+ 3 files changed, 113 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/staging/media/meson/vdec/codec_hevc_common.c b/drivers/staging/media/meson/vdec/codec_hevc_common.c
+index a996fb8..950c53d 100644
+--- a/drivers/staging/media/meson/vdec/codec_hevc_common.c
++++ b/drivers/staging/media/meson/vdec/codec_hevc_common.c
+@@ -3,6 +3,8 @@
+  * Copyright (C) 2018 Maxime Jourdan <mjourdan@baylibre.com>
+  */
+ 
++#include <linux/dma-mapping.h>
++#include <linux/mm.h>
+ #include <media/v4l2-mem2mem.h>
+ #include <media/videobuf2-dma-contig.h>
+ 
+@@ -150,16 +152,36 @@ static void codec_hevc_setup_buffers_gxl(struct amvdec_session *sess,
+ 		amvdec_write_dos(core, HEVCD_MPP_ANC_CANVAS_DATA_ADDR, 0);
+ }
+ 
++static void codec_hevc_free_fbc_pages(struct device *dev,
++				      struct codec_hevc_fbc_page *pages,
++				      u32 nr_pages)
++{
++	u32 i;
++
++	for (i = 0; i < nr_pages && pages[i].page; ++i) {
++		dma_unmap_page(dev, pages[i].dma, PAGE_SIZE,
++			       DMA_BIDIRECTIONAL);
++		__free_page(pages[i].page);
++	}
++
++	kvfree(pages);
++}
++
+ void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
+ 				 struct codec_hevc_common *comm)
+ {
+ 	struct device *dev = sess->core->dev;
+-	u32 am21_size = amvdec_am21c_size(sess->width, sess->height);
+ 	int i;
+ 
+ 	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
++		if (comm->fbc_pages[i]) {
++			codec_hevc_free_fbc_pages(dev, comm->fbc_pages[i],
++						  comm->fbc_size >> PAGE_SHIFT);
++			comm->fbc_pages[i] = NULL;
++		}
++
+ 		if (comm->fbc_buffer_vaddr[i]) {
+-			dma_free_coherent(dev, am21_size,
++			dma_free_coherent(dev, comm->fbc_size,
+ 					  comm->fbc_buffer_vaddr[i],
+ 					  comm->fbc_buffer_paddr[i]);
+ 			comm->fbc_buffer_vaddr[i] = NULL;
+@@ -168,28 +190,88 @@ void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
+ }
+ EXPORT_SYMBOL_GPL(codec_hevc_free_fbc_buffers);
+ 
++/*
++ * A compressed frame the decoder reaches through its MMU needs no physical
++ * contiguity, so it is built from single pages rather than taken out of the
++ * CMA pool, which a 1080p DPB of compressed frames would not fit in.
++ */
++static struct codec_hevc_fbc_page *
++codec_hevc_alloc_fbc_pages(struct device *dev, u32 nr_pages)
++{
++	struct codec_hevc_fbc_page *pages;
++	u32 i;
++
++	pages = kvcalloc(nr_pages, sizeof(*pages), GFP_KERNEL);
++	if (!pages)
++		return NULL;
++
++	for (i = 0; i < nr_pages; ++i) {
++		struct page *page = alloc_page(GFP_KERNEL);
++		dma_addr_t dma;
++
++		if (!page)
++			goto err;
++
++		dma = dma_map_page(dev, page, 0, PAGE_SIZE, DMA_BIDIRECTIONAL);
++		if (dma_mapping_error(dev, dma)) {
++			__free_page(page);
++			goto err;
++		}
++
++		pages[i].page = page;
++		pages[i].dma = dma;
++	}
++
++	return pages;
++
++err:
++	codec_hevc_free_fbc_pages(dev, pages, nr_pages);
++	return NULL;
++}
++
+ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
+-					struct codec_hevc_common *comm)
++					struct codec_hevc_common *comm,
++					int is_10bit)
+ {
+ 	struct device *dev = sess->core->dev;
+ 	struct v4l2_m2m_buffer *buf;
+ 	u32 am21_size = amvdec_am21c_size(sess->width, sess->height);
++	bool use_mmu = codec_hevc_use_mmu(sess->core->platform->revision,
++					  sess->pixfmt_cap, is_10bit);
++
++	comm->fbc_size = am21_size;
+ 
+ 	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
+ 		u32 idx = buf->vb.vb2_buf.index;
+ 		dma_addr_t paddr;
+-		void *vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
+-						 GFP_KERNEL);
+-		if (!vaddr) {
+-			codec_hevc_free_fbc_buffers(sess, comm);
+-			return -ENOMEM;
++		void *vaddr;
++
++		if (use_mmu) {
++			struct codec_hevc_fbc_page *pages =
++				codec_hevc_alloc_fbc_pages(dev,
++							   am21_size >> PAGE_SHIFT);
++
++			if (!pages)
++				goto err;
++
++			comm->fbc_pages[idx] = pages;
++			comm->fbc_buffer_paddr[idx] = pages[0].dma;
++			continue;
+ 		}
+ 
++		vaddr = dma_alloc_coherent(dev, am21_size, &paddr, GFP_KERNEL);
++		if (!vaddr)
++			goto err;
++
+ 		comm->fbc_buffer_vaddr[idx] = vaddr;
+ 		comm->fbc_buffer_paddr[idx] = paddr;
+ 	}
+ 
+ 	return 0;
++
++err:
++	codec_hevc_free_fbc_buffers(sess, comm);
++	return -ENOMEM;
+ }
+ 
+ void codec_hevc_free_mmu_headers(struct amvdec_session *sess,
+@@ -252,8 +334,12 @@ int codec_hevc_setup_buffers(struct amvdec_session *sess,
+ 	struct amvdec_core *core = sess->core;
+ 	int ret;
+ 
++	/* A resume replaces whatever an earlier resume set up */
++	codec_hevc_free_fbc_buffers(sess, comm);
++	codec_hevc_free_mmu_headers(sess, comm);
++
+ 	if (codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit)) {
+-		ret = codec_hevc_alloc_fbc_buffers(sess, comm);
++		ret = codec_hevc_alloc_fbc_buffers(sess, comm, is_10bit);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -280,12 +366,19 @@ void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
+ 			     struct codec_hevc_common *comm,
+ 			     struct vb2_buffer *vb)
+ {
++	struct codec_hevc_fbc_page *pages = comm->fbc_pages[vb->index];
+ 	u32 size = amvdec_am21c_size(sess->width, sess->height);
+ 	u32 nb_pages = size / PAGE_SIZE;
+ 	u32 *mmu_map = comm->mmu_map_vaddr;
+ 	u32 first_page;
+ 	u32 i;
+ 
++	if (pages) {
++		for (i = 0; i < comm->fbc_size >> PAGE_SHIFT; ++i)
++			mmu_map[i] = pages[i].dma >> PAGE_SHIFT;
++		return;
++	}
++
+ 	if (codec_hevc_is_nv12(sess->pixfmt_cap))
+ 		first_page = comm->fbc_buffer_paddr[vb->index] >> PAGE_SHIFT;
+ 	else
+diff --git a/drivers/staging/media/meson/vdec/codec_hevc_common.h b/drivers/staging/media/meson/vdec/codec_hevc_common.h
+index 6a0709e..3ef2b61 100644
+--- a/drivers/staging/media/meson/vdec/codec_hevc_common.h
++++ b/drivers/staging/media/meson/vdec/codec_hevc_common.h
+@@ -20,9 +20,19 @@ extern const u16 vdec_hevc_parser_cmd[VDEC_HEVC_PARSER_CMD_LEN];
+ 
+ #define MAX_REF_PIC_NUM	24
+ 
++/* One page of a compressed frame that is only reached through the MMU */
++struct codec_hevc_fbc_page {
++	struct page *page;
++	dma_addr_t dma;
++};
++
+ struct codec_hevc_common {
+ 	void      *fbc_buffer_vaddr[MAX_REF_PIC_NUM];
+ 	dma_addr_t fbc_buffer_paddr[MAX_REF_PIC_NUM];
++	/* Set instead of fbc_buffer_vaddr when the buffer is MMU-mapped */
++	struct codec_hevc_fbc_page *fbc_pages[MAX_REF_PIC_NUM];
++	/* Size of each compressed buffer, as allocated */
++	u32 fbc_size;
+ 
+ 	void      *mmu_header_vaddr[MAX_REF_PIC_NUM];
+ 	dma_addr_t mmu_header_paddr[MAX_REF_PIC_NUM];
+diff --git a/drivers/staging/media/meson/vdec/codec_vp9.c b/drivers/staging/media/meson/vdec/codec_vp9.c
+index 257b86b..eec7e9b 100644
+--- a/drivers/staging/media/meson/vdec/codec_vp9.c
++++ b/drivers/staging/media/meson/vdec/codec_vp9.c
+@@ -859,6 +859,7 @@ static int codec_vp9_stop(struct amvdec_session *sess)
+ 				  vp9->workspace_paddr);
+ 
+ 	codec_hevc_free_fbc_buffers(sess, &vp9->common);
++	codec_hevc_free_mmu_headers(sess, &vp9->common);
+ 	mutex_unlock(&vp9->lock);
+ 
+ 	return 0;
+-- 
+2.54.0 (Apple Git-157)
+
